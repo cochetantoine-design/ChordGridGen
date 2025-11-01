@@ -1,8 +1,5 @@
-/* ChordGridGen - JS (updated with undo/redo)
- - Undo/Redo history implemented with snapshot stack and pointer.
- - History updated for key actions: add/remove/dup/paste/reorder parts, edit measure, transpose (global/local), change part params.
- - Title/tempo/comments snapshots created on blur/change (to avoid many snapshots while typing).
- - Undo/Redo buttons enabled/disabled based on history pointer.
+/* ChordGridGen - JS (updated: removed per-measure +/- UI; print hide for part controls)
+ - Undo/Redo history and other features preserved.
 */
 
 /* ---------- Configuration ---------- */
@@ -417,22 +414,6 @@ function createMeasureSVG(part, index, partIdx){
 
   el.appendChild(svg);
 
-  // +/- buttons for local transpose
-  const minus = document.createElement("button");
-  minus.className = "measure-btn minus";
-  minus.title = "Transposer - (seulement cette mesure)";
-  minus.textContent = "−";
-  minus.onclick = (ev)=> { ev.stopPropagation(); transposeMeasure(part, index, -1); saveHistorySnapshot(); };
-
-  const plus = document.createElement("button");
-  plus.className = "measure-btn plus";
-  plus.title = "Transposer + (seulement cette mesure)";
-  plus.textContent = "+";
-  plus.onclick = (ev)=> { ev.stopPropagation(); transposeMeasure(part, index, +1); saveHistorySnapshot(); };
-
-  el.appendChild(minus);
-  el.appendChild(plus);
-
   // interactions: right-click for context and double-click to edit
   const overlay = document.createElement("div");
   overlay.className = "measure-click-layer";
@@ -540,6 +521,7 @@ function transposeAll(delta){
   renderAll();
 }
 
+/* transposeMeasure is kept for API compatibility but no per-measure buttons are rendered anymore */
 function transposeMeasure(part, index, delta){
   const m = part.measures[index];
   if(!m) return;
