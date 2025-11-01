@@ -205,15 +205,17 @@
   box-sizing:border-box;
 }
 
-/* Hide controls when printing */
+/* Hide controls when printing (main app page) */
+/* Note: exportPrintable builds a minimal printable page itself, but this protects regular print as well */
 @media print {
   body * { visibility: hidden; }
   .page-a4, .page-a4 * { visibility: visible; }
   .page-a4 { margin: 0; box-shadow:none; }
   .controls { display:none !important; }
-  /* Hide left-column control buttons in print */
-  #addPartBtn, .part-actions { display: none !important; }
+  /* Hide left-column control buttons and per-part actions in print */
+  #addPartBtn, .part-actions, .parts-controls { display: none !important; }
+  /* Hide inputs and interactive controls so PDF shows only static text/elements */
+  .part-meta input, input[type="number"], .part-meta label, .parts-list input { display: none !important; }
   /* remove focus outlines */
   input, textarea, button { outline:none; }
-  /* increase fidelity for prints if needed */
 }

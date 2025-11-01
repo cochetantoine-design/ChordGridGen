@@ -1,4 +1,4 @@
-/* ChordGridGen - JS (updated: removed per-measure +/- UI; print hide for part controls)
+/* ChordGridGen - JS (updated: exportPrintable shows only title, BPM, part names, measures with chords and comments; chords rendered at 12pt in PDF)
  - Undo/Redo history and other features preserved.
 */
 
@@ -161,7 +161,7 @@ function bindUI(){
     init();
   };
 
-  exportBtn.onclick = ()=> { window.print(); };
+  exportBtn.onclick = ()=> { exportPrintable(); };
 
   pastePartBtn.onclick = async ()=>{
     try {
@@ -521,20 +521,87 @@ function transposeAll(delta){
   renderAll();
 }
 
-/* transposeMeasure is kept for API compatibility but no per-measure buttons are rendered anymore */
-function transposeMeasure(part, index, delta){
-  const m = part.measures[index];
-  if(!m) return;
-  if(m.chord && m.chord.trim()!==""){
-    if(m.split && m.chord.includes("|")){
-      const parts = m.chord.split("|").map(x=>x.trim());
-      const tparts = parts.map(p => transposeChord(p, delta));
-      m.chord = tparts.join(" | ");
-    } else {
-      m.chord = transposeChord(m.chord, delta);
-    }
+/* ---------- Export printable PDF (new) ---------- */
+/* Build a minimal A4 HTML page that contains only title, BPM, each part name, measures and comments.
+   Chord text is rendered at 12pt. */
+function escapeHtmlAttr(s){ return (s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function measureToSvgString(m){
+  const filled = m.chord && m.chord.trim() !== "";
+  const bg = filled ? '#ffffff' : '#CECECE';
+  if(m.split && m.chord && m.chord.includes("|")){
+    const parts = m.chord.split("|").map(s=>s.trim());
+    const top = escapeHtmlAttr(parts[0]||"");
+    const bottom = escapeHtmlAttr(parts[1]||"");
+    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <rect x="0" y="0" width="100" height="100" fill="${bg}" stroke="#000"/>
+      <line x1="0" y1="100" x2="100" y2="0" stroke="#000" stroke-width="1"/>
+      <text x="30" y="35" class="chord-text">${top}</text>
+      <text x="70" y="65" class="chord-text">${bottom}</text>
+    </svg>`;
+  } else {
+    const chord = escapeHtmlAttr(m.chord || "");
+    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <rect x="0" y="0" width="100" height="100" fill="${bg}" stroke="#000"/>
+      <text x="50" y="50" class="chord-text">${chord}</text>
+    </svg>`;
   }
-  renderAll();
+}
+
+function exportPrintable(){
+  const title = escapeHtmlAttr(state.title || '');
+  const bpm = escapeHtmlAttr(String(state.tempo || ''));
+  const comments = escapeHtmlAttr(state.comments || '');
+
+  const css = `
+    @page { size: A4; margin: 8mm }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; color:#000; }
+    .page { width:21cm; min-height:29.7cm; box-sizing:border-box; padding:8mm; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; height:3cm; }
+    .title { font-size: 16pt; font-weight:700; border-bottom:1px solid #000; padding-bottom:4px; }
+    .bpm { font-size: 12pt; }
+    .content { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+    .part { display:flex; gap:8px; align-items:flex-start; margin-bottom:3mm; }
+    .part-name { width:6cm; font-weight:700; display:flex; align-items:center; justify-content:center; }
+    .measures { display:flex; flex-direction:column; gap:4px; }
+    .measures-line { display:flex; gap:4px; }
+    .measure { width:1.5cm; height:1.5cm; box-sizing:border-box; }
+    svg { width:100%; height:100%; display:block; }
+    .chord-text { font-size:12pt; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
+    .footer { margin-top:8px; font-size:12pt; min-height: calc(12pt * 1.2 * 4); white-space:pre-wrap; }
+  `;
+
+  // Build parts HTML (static)
+  let partsHtml = '';
+  for(const p of state.parts){
+    partsHtml += `<div class="part">`;
+    partsHtml += `<div class="part-name">${escapeHtmlAttr(p.name)}</div>`;
+    partsHtml += `<div class="measures">`;
+    const perLine = clamp(p.measuresPerLine || 1, 1, 10);
+    for(let i=0;i<p.measuresTotal;i+=perLine){
+      partsHtml += `<div class="measures-line">`;
+      for(let j=i;j<Math.min(i+perLine,p.measuresTotal);j++){
+        const m = p.measures[j] || { chord:'', split:false };
+        partsHtml += `<div class="measure">${measureToSvgString(m)}</div>`;
+      }
+      partsHtml += `</div>`;
+    }
+    partsHtml += `</div>`;
+    partsHtml += `</div>`;
+  }
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${css}</style></head><body><div class="page">` +
+    `<div class="header"><div class="title">${title}</div><div class="bpm">${bpm} BPM</div></div>` +
+    `<div class="content">` + partsHtml + `</div>` +
+    `<div class="footer">${comments}</div>` +
+    `</div></body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w) { alert('Impossible d\\'ouvrir la fenêtre d\\'impression. Vérifie que les popups sont autorisés.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  setTimeout(()=>{ w.focus(); w.print(); }, 300);
 }
 
 /* ---------- Save / Load JSON ---------- */
