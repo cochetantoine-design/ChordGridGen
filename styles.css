@@ -1,221 +1,257 @@
 :root{
-  --a4-width: 21cm;
-  --a4-height: 29.7cm;
-  --left-col-width: 6cm;
-  --header-height: 3cm;
-  --measure-size: 1.5cm;
-  --part-gap: 0.3cm; /* 3 mm */
-  --gray: #CECECE;
-  --white: #ffffff;
-  --font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --page-width:210mm;
+  --page-height:297mm;
+  --header-max-h:3cm;
+  --left-col-w:6cm;
+  --measure-size:1.5cm;
+  --gap-between-parts:3mm;
+  --gray:#CECECE;
+  --filled-bg:#ffffff;
+  font-family: "Arial", sans-serif;
+  font-size:12pt; /* "corps 12" */
 }
 
-/* Page container sized to A4 for on-screen layout and print */
-.page-a4{
-  width: var(--a4-width);
-  min-height: var(--a4-height);
-  margin: 10px auto;
-  box-shadow: 0 0 0.5cm rgba(0,0,0,0.1);
-  background: white;
-  font-family: var(--font-family);
-  color: #111;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  padding: 8mm;
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  display:flex;
+  min-height:100vh;
+  background:#f4f4f4;
+  color:#111;
 }
 
-/* Header: max height 3cm */
-.page-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  height: var(--header-height);
-  box-sizing: border-box;
-}
-.title-area{
-  width: calc(100% - 5cm);
-}
-.song-title{
-  width: 100%;
-  font-size: 16pt;
-  border: none;
-  outline: none;
-}
-.title-underline{
-  border: none;
-  border-bottom: 1px solid #000;
-  margin-top: 2px;
-}
-.tempo-area{
-  width: 5cm;
-  display:flex;
-  align-items:center;
-  gap: 6px;
-}
-
-/* Body split left/right */
-.page-body{
-  display:flex;
-  flex:1 1 auto;
-  margin-top: 6px;
-}
-.left-column{
-  width: var(--left-col-width);
-  box-sizing: border-box;
-  padding-right: 8px;
-  border-right: 1px dashed #ddd;
-}
-.parts-controls{
-  margin-bottom: 6px;
-}
-.parts-list{
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-  margin-top:8px;
-}
-.part-item{
-  background: #fafafa;
-  padding:6px;
-  border:1px solid #ddd;
-  display:flex;
-  gap:6px;
-  align-items:center;
-  cursor:grab;
-}
-.part-item.dragging{
-  opacity:0.6;
-}
-.part-meta{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-}
-.part-actions{
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-}
-
-/* Grid area: right */
-.grid-area{
-  flex:1;
-  padding-left: 12px;
+/* Controls sidebar - not printed */
+#controls{
+  width:260px;
+  padding:16px;
+  background:#fff;
+  border-right:1px solid #ddd;
   overflow:auto;
 }
-.grid-container{
+#controls h2{margin-top:0}
+.controls-row{margin-bottom:8px}
+.controls-row button{margin-right:6px}
+.parts-list{margin-top:8px}
+.part-item{
   display:flex;
-  flex-direction:column;
-  gap: var(--part-gap);
+  align-items:center;
+  justify-content:space-between;
+  padding:6px;
+  border:1px solid #ddd;
+  margin-top:6px;
+  background:#fafafa;
+}
+.part-item.selected{background:#e8f3ff;border-color:#a9d0ff}
+
+/* Page container */
+main#a4{
+  padding:20px;
 }
 
-/* One part rendered as a row group: left label area + grid to the right */
-.part-render{
+#a4, #page-wrap{flex:1; display:flex; justify-content:center; align-items:flex-start; padding:20px}
+
+/* A4 page */
+.a4page{
+  width:var(--page-width);
+  height:var(--page-height);
+  background:white;
+  box-shadow:0 2px 8px rgba(0,0,0,0.2);
+  padding:8mm;
   display:flex;
+  flex-direction:column;
+  gap:6mm;
+  overflow:hidden;
+}
+
+/* Header */
+#page-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  max-height:var(--header-max-h);
+  min-height:2.2cm;
   gap:8px;
+}
+#title-area{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+}
+#title-area input{
+  border:none;
+  border-bottom:1px solid #000;
+  font-size:12pt;
+  padding:2px;
+  width:100%;
+  background:transparent;
+}
+#tempo-area{
+  width:6.5cm;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+#tempo{width:80px;}
+
+/* Body */
+#page-body{
+  display:flex;
+  gap:8mm;
+  flex:1 1 auto;
   align-items:flex-start;
 }
-.part-label{
-  width: var(--left-col-width);
-  box-sizing:border-box;
-  padding:4px;
-  min-height: calc(var(--measure-size) + 8px);
+
+/* left col inside page (6cm) */
+.left-column{
+  width:var(--left-col-w);
+  border-right:1px solid #000;
+  padding-right:4mm;
+  display:flex;
+  flex-direction:column;
+  gap:6mm;
+}
+
+/* grid column */
+.grid-column{
+  flex:1 1 auto;
+  min-width:0;
+}
+
+/* Part row (left label + grid) */
+.part-row{
+  display:flex;
+  gap:6mm;
+  align-items:flex-start;
+  margin-bottom:var(--gap-between-parts);
+}
+
+/* part-name area */
+.part-name{
+  width:var(--left-col-w);
+  min-height:calc(var(--measure-size) + 4px);
+  display:flex;
+  align-items:center;
+  padding-left:4mm;
+  font-weight:bold;
+}
+
+/* grid for measures */
+.part-grid{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+/* each measure-row */
+.measure-row{
+  display:flex;
+  gap:4px;
+}
+
+/* measure (square) */
+.measure{
+  width:var(--measure-size);
+  height:var(--measure-size);
+  border:1px solid #000;
+  background:var(--gray);
+  position:relative;
+  font-size:12pt;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-weight:600;
-  text-align:center;
-}
-.measures-block{
-  display:flex;
-  flex-direction:column;
-  gap: 4px;
+  padding:2px;
+  overflow:visible;
 }
 
-/* A line of measures */
-.measures-line{
-  display:flex;
-  gap:4px;
+/* filled */
+.measure.filled{ background:var(--filled-bg); }
+
+/* oval chord style inside measure */
+.chord-oval{
+  display:inline-block;
+  padding:2px 6px;
+  border-radius:999px;
+  background:#fff;
+  border:1px solid #000;
+  color:#000;
+  font-weight:normal;
+  font-size:12pt;
+  line-height:1;
 }
 
-/* Measure (rendered as SVG to support diagonal split easily) */
-.measure {
-  width: var(--measure-size);
-  height: var(--measure-size);
-  box-sizing: border-box;
-  position: relative;
-  user-select: none;
+/* split diagonal line and two text areas */
+.measure.split{
+  background:transparent;
+  padding:0;
 }
-.measure svg{
-  width:100%;
-  height:100%;
-  display:block;
-}
-.measure .measure-click-layer{
+.split-svg{
   position:absolute;
   inset:0;
-  cursor:pointer;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+}
+.split-text {
+  position:absolute;
+  width:50%;
+  padding:2px;
+  font-size:12pt;
+  color:#000;
+}
+.split-text.top-left{
+  top:2px;
+  left:2px;
+  transform-origin:left top;
+  text-align:left;
+}
+.split-text.bottom-right{
+  bottom:2px;
+  right:2px;
+  text-align:right;
 }
 
-/* Empty vs filled backgrounds */
-.bg-empty{
-  background: var(--gray);
-}
-.bg-filled{
-  background: var(--white);
-}
-
-/* Oval for chord inside grey square */
-.chord-oval {
-  fill: #fff;
-  stroke: #000;
-  stroke-width: 0.6px;
-}
-.chord-text {
-  font-size: 10px;
-  fill: #000;
-  font-weight:700;
-  dominant-baseline:middle;
-  text-anchor:middle;
-}
-
-/* Controls bar at top (not printed) */
-.controls{
-  margin:8px auto;
-  width: var(--a4-width);
-  display:flex;
-  gap:8px;
-  justify-content:flex-start;
-}
-.controls button{
-  padding:6px 8px;
-}
-
-/* Footer: 4 lines corps 12 (12pt) */
-.page-footer{
-  margin-top:8px;
-}
-.page-footer textarea{
+/* footer */
+#page-footer{ margin-top:auto; }
+#comments{
   width:100%;
   font-size:12pt;
-  height: calc(12pt * 1.2 * 4 + 8px); /* approximate 4 lines */
   resize:none;
-  box-sizing:border-box;
+  border:1px solid #000;
+  padding:6px;
+  height:calc(1.2em * 4 + 12px);
 }
 
-/* Hide controls when printing (main app page) */
-/* Note: exportPrintable builds a minimal printable page itself, but this protects regular print as well */
-@media print {
-  body * { visibility: hidden; }
-  .page-a4, .page-a4 * { visibility: visible; }
-  .page-a4 { margin: 0; box-shadow:none; }
-  .controls { display:none !important; }
-  /* Hide left-column control buttons and per-part actions in print */
-  #addPartBtn, .part-actions, .parts-controls { display: none !important; }
-  /* Hide inputs and interactive controls so PDF shows only static text/elements */
-  .part-meta input, input[type="number"], .part-meta label, .parts-list input { display: none !important; }
-  /* remove focus outlines */
-  input, textarea, button { outline:none; }
+/* Editor modal */
+.modal{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,0.3);
+  z-index:1000;
+}
+.modal[aria-hidden="true"]{ display:none; }
+.modal-content{
+  background:#fff;
+  padding:12px;
+  border-radius:6px;
+  width:320px;
+}
+.modal-content .row{margin-top:8px;}
+.actions{display:flex; gap:8px; justify-content:flex-end; margin-top:12px}
+
+/* Print rules: hide controls, show page exactly */
+@media print{
+  body{background:#fff}
+  #controls, .modal{display:none !important}
+  .a4page{
+    box-shadow:none;
+    margin:0;
+    padding:8mm;
+    page-break-after:always;
+  }
+  /* ensure printed page size */
+  @page { size: A4; margin: 0; }
 }

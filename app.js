@@ -1,681 +1,492 @@
-/* ChordGridGen - JS (updated: exportPrintable shows only title, BPM, part names, measures with chords and comments; chords rendered at 12pt in PDF)
- - Undo/Redo history and other features preserved.
-*/
+// ChordGridGen — basic implementation
+// Author: Copilot-style implementation for initial repo
+// Behaviour implemented:
+// - create parts (name, total measures, measuresPerLine)
+// - duplicate, reorder, delete parts
+// - edit measures (single or split), option oval
+// - transpose up/down over scale A Bb B C C# D Eb E F F# G Ab
+// - save/load JSON, new (reset), export via print
+// - undo/redo snapshots
 
-/* ---------- Configuration ---------- */
-const ROOTS = ["A","Bb","B","C","C#","D","Eb","E","F","F#","G","Ab"];
-const ALLOWED_SUFFIXES = ["M7","m","7","°7","5","sus2","sus4"]; // can combine
+(() => {
+  // State
+  let state = {
+    title: 'Untitled',
+    tempo: 120,
+    parts: [],
+    comments: ''
+  };
 
-/* ---------- App State ---------- */
-let state = {
-  title: "Titre",
-  tempo: 120,
-  comments: "",
-  parts: [] // each part: {id, name, measuresTotal, measuresPerLine, measures: [{chord, split}]}
-};
-
-// clipboard fallback (if navigator.clipboard not available)
-let lastCopiedPartJson = null;
-
-/* ---------- History (undo/redo) ---------- */
-const history = {
-  snapshots: [],
-  index: -1,
-  max: 200
-};
-function deepCloneState(s){ return JSON.parse(JSON.stringify(s)); }
-function saveHistorySnapshot(){
-  // push copy of current state to history, trimming any redo branch
-  history.snapshots = history.snapshots.slice(0, history.index + 1);
-  history.snapshots.push(deepCloneState(state));
-  if(history.snapshots.length > history.max){
-    history.snapshots.shift();
-  } else {
-    history.index++;
+  // Undo/Redo
+  const history = [];
+  let historyIndex = -1;
+  function pushHistory() {
+    // drop future
+    history.splice(historyIndex + 1);
+    history.push(JSON.parse(JSON.stringify(state)));
+    historyIndex = history.length - 1;
+    updateUndoRedoButtons();
   }
-  if(history.snapshots.length > history.max){
-    // ensure index stays within bounds if we shifted
-    history.index = history.snapshots.length - 1;
+  function restoreFromHistory(idx) {
+    if (idx < 0 || idx >= history.length) return;
+    state = JSON.parse(JSON.stringify(history[idx]));
+    historyIndex = idx;
+    renderAll();
+    updateUndoRedoButtons();
   }
-  updateUndoRedoButtons();
-}
-function undo(){
-  if(history.index <= 0) return;
-  history.index--;
-  state = deepCloneState(history.snapshots[history.index]);
-  renderAll();
-  updateUndoRedoButtons();
-}
-function redo(){
-  if(history.index >= history.snapshots.length - 1) return;
-  history.index++;
-  state = deepCloneState(history.snapshots[history.index]);
-  renderAll();
-  updateUndoRedoButtons();
-}
-function resetHistory(){
-  history.snapshots = [];
-  history.index = -1;
-  saveHistorySnapshot();
-}
-function updateUndoRedoButtons(){
-  const undoBtn = document.getElementById("undoBtn");
-  const redoBtn = document.getElementById("redoBtn");
-  if(undoBtn) undoBtn.disabled = !(history.index > 0);
-  if(redoBtn) redoBtn.disabled = !(history.index < history.snapshots.length - 1);
-}
+  function updateUndoRedoButtons() {
+    document.getElementById('btn-undo').disabled = historyIndex <= 0;
+    document.getElementById('btn-redo').disabled = historyIndex >= history.length - 1;
+  }
 
-/* ---------- Helpers ---------- */
-const uid = () => Math.random().toString(36).slice(2,9);
-function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
-function createEmptyPart(name = "Part", measuresTotal = 8, measuresPerLine = 4){
-  const id = uid();
-  const measures = Array.from({length: measuresTotal}, ()=>({chord:"", split:false}));
-  return { id, name, measuresTotal, measuresPerLine, measures };
-}
+  // Scale for transposition
+  const SCALE = ['A','Bb','B','C','C#','D','Eb','E','F','F#','G','Ab'];
+  function normalizeRoot(r){
+    if(!r) return '';
+    // Standardize alternates: use Bb instead of A# etc. We'll accept only the provided names.
+    const map = {'A#':'Bb','Db':'C#','D#':'Eb','Gb':'F#','G#':'Ab','Cb':'B','E#':'F'};
+    return map[r] || r;
+  }
+  function transposeChordString(s, step){
+    // s can be like "Abm7" or "F#sus4" or empty string
+    if(!s || !s.trim()) return s;
+    s = s.trim();
+    // match root at beginning
+    const rootRegex = /^(A#|Bb|A|B|C#|Db|C|D#|Eb|D|E#|E|F#|Gb|F|G#|Ab|G|Cb)?/i;
+    const m = s.match(rootRegex);
+    if(!m) return s;
+    let root = m[0];
+    if(!root) return s; // no root found
+    // Standardize some enharmonics
+    root = normalizeRoot(root.charAt(0).toUpperCase() + root.slice(1));
+    // suffix is rest
+    const suffix = s.slice(m[0].length);
+    const idx = SCALE.findIndex(x => x.toLowerCase() === root.toLowerCase());
+    if(idx === -1) return s;
+    const newRoot = SCALE[(idx + step + SCALE.length) % SCALE.length];
+    return newRoot + suffix;
+  }
 
-/* parse chord: find root among ROOTS; return {root,suffix} or null */
-function parseChord(chordStr){
-  if(!chordStr) return null;
-  chordStr = chordStr.trim();
-  for(const r of ROOTS){
-    if(chordStr.toUpperCase().startsWith(r.toUpperCase())){
-      const rem = chordStr.slice(r.length);
-      return { root: r, suffix: rem };
+  // DOM refs
+  const partsListEl = document.getElementById('parts-list');
+  const partNameInput = document.getElementById('part-name');
+  const partTotalInput = document.getElementById('part-total');
+  const partPerLineInput = document.getElementById('part-per-line');
+  const selectedSettingsPanel = document.getElementById('selected-part-settings');
+  const btnAddPart = document.getElementById('btn-add-part');
+  const btnDuplicate = document.getElementById('btn-duplicate-part');
+  const btnMoveUp = document.getElementById('btn-move-up');
+  const btnMoveDown = document.getElementById('btn-move-down');
+  const btnDeletePart = document.getElementById('btn-delete-part');
+  const partsContainer = document.getElementById('parts-list');
+
+  const pageLeft = document.getElementById('page-left-column');
+  const pageGrid = document.getElementById('page-grid');
+
+  const songTitleInput = document.getElementById('song-title');
+  const tempoInput = document.getElementById('tempo');
+  const commentsInput = document.getElementById('comments');
+
+  const fileInput = document.getElementById('file-input');
+
+  let selectedPartIndex = null;
+  let editingCell = null; // {partIndex, measureIndex}
+
+  // Editor modal
+  const editor = document.getElementById('editor');
+  const editorSplit = document.getElementById('editor-split');
+  const editorChord1 = document.getElementById('editor-chord1');
+  const editorChord2Row = document.getElementById('editor-chord2-row');
+  const editorChord2 = document.getElementById('editor-chord2');
+  const editorOval = document.getElementById('editor-oval');
+
+  // init
+  function init() {
+    bindUI();
+    // start with one default part
+    state = {
+      title: 'Titre du morceau',
+      tempo: 120,
+      parts: [{
+        name: 'Intro',
+        totalMeasures: 8,
+        measuresPerLine: 4,
+        measures: makeMeasuresArray(8)
+      }],
+      comments: ''
+    };
+    pushHistory();
+    renderAll();
+  }
+
+  function makeMeasuresArray(n){
+    const arr = [];
+    for(let i=0;i<n;i++){
+      arr.push({ split:false, chord1:'', chord2:'', oval:false });
     }
+    return arr;
   }
-  return null;
-}
-function transposeChord(chordStr, delta){
-  const parsed = parseChord(chordStr);
-  if(!parsed) return chordStr;
-  let idx = ROOTS.findIndex(r => r.toUpperCase() === parsed.root.toUpperCase());
-  if(idx === -1) return chordStr;
-  idx = (idx + delta + ROOTS.length) % ROOTS.length;
-  return ROOTS[idx] + parsed.suffix;
-}
 
-/* ---------- DOM refs ---------- */
-const partsListEl = document.getElementById("partsList");
-const addPartBtn = document.getElementById("addPartBtn");
-const gridContainer = document.getElementById("gridContainer");
-const songTitleInput = document.getElementById("songTitle");
-const tempoInput = document.getElementById("tempo");
-const commentsInput = document.getElementById("comments");
-const transposeUpBtn = document.getElementById("transposeUpBtn");
-const transposeDownBtn = document.getElementById("transposeDownBtn");
-const saveBtn = document.getElementById("saveBtn");
-const loadBtn = document.getElementById("loadBtn");
-const fileInput = document.getElementById("fileInput");
-const newBtn = document.getElementById("newBtn");
-const exportBtn = document.getElementById("exportBtn");
-const pastePartBtn = document.getElementById("pastePartBtn");
-const undoBtn = document.getElementById("undoBtn");
-const redoBtn = document.getElementById("redoBtn");
+  function bindUI(){
+    btnAddPart.addEventListener('click', () => {
+      const name = prompt('Nom de la nouvelle partie', 'New Part');
+      if(!name) return;
+      const total = parseInt(prompt('Total mesures', '8') || '8',10) || 8;
+      const perLine = parseInt(prompt('Mesures par ligne (1-10)', '4') || '4',10);
+      addPart({name, totalMeasures: total, measuresPerLine: Math.min(10, Math.max(1,perLine)), measures: makeMeasuresArray(total)});
+      pushHistory();
+    });
 
-/* ---------- Init ---------- */
-function init(){
-  state.title = "Titre du morceau";
-  state.tempo = 120;
-  state.comments = "";
-  state.parts = [
-    createEmptyPart("Intro", 8, 4),
-    createEmptyPart("Couplet", 8, 4),
-    createEmptyPart("Refrain", 8, 4),
-  ];
-  bindUI();
-  // initialize history with this initial state
-  history.snapshots = [];
-  history.index = -1;
-  saveHistorySnapshot();
-  renderAll();
-}
+    partsContainer.addEventListener('click', (e)=>{
+      const id = e.target.closest('.part-item')?.dataset?.index;
+      if(id !== undefined) {
+        selectPart(parseInt(id,10));
+      }
+      // select via button actions
+      const btn = e.target.closest('button[data-action]');
+      if(btn){
+        const idx = parseInt(btn.closest('.part-item').dataset.index,10);
+        const action = btn.dataset.action;
+        if(action==='dup'){ duplicatePart(idx); pushHistory(); }
+        if(action==='up'){ movePartUp(idx); pushHistory(); }
+        if(action==='down'){ movePartDown(idx); pushHistory(); }
+        if(action==='del'){ deletePart(idx); pushHistory(); }
+      }
+    });
 
-/* ---------- UI binding ---------- */
-function bindUI(){
-  addPartBtn.onclick = ()=> {
-    const part = createEmptyPart("Part " + (state.parts.length+1), 8, 4);
+    partNameInput.addEventListener('input', ()=> {
+      if(selectedPartIndex===null) return;
+      state.parts[selectedPartIndex].name = partNameInput.value;
+      renderAll();
+      pushHistory();
+    });
+    partTotalInput.addEventListener('change', ()=> {
+      if(selectedPartIndex===null) return;
+      let t = parseInt(partTotalInput.value,10);
+      if(isNaN(t) || t<1) t=1;
+      const p = state.parts[selectedPartIndex];
+      // adjust measures array
+      if(t > p.measures.length){
+        const add = makeMeasuresArray(t - p.measures.length);
+        p.measures = p.measures.concat(add);
+      } else if (t < p.measures.length){
+        p.measures = p.measures.slice(0,t);
+      }
+      p.totalMeasures = t;
+      partTotalInput.value = t;
+      renderAll();
+      pushHistory();
+    });
+    partPerLineInput.addEventListener('change', ()=> {
+      if(selectedPartIndex===null) return;
+      let v = parseInt(partPerLineInput.value,10);
+      if(isNaN(v) || v<1) v=1;
+      if(v>10)v=10;
+      state.parts[selectedPartIndex].measuresPerLine = v;
+      partPerLineInput.value = v;
+      renderAll();
+      pushHistory();
+    });
+
+    document.getElementById('btn-duplicate-part').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ duplicatePart(selectedPartIndex); pushHistory(); }});
+    document.getElementById('btn-move-up').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ movePartUp(selectedPartIndex); pushHistory(); }});
+    document.getElementById('btn-move-down').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ movePartDown(selectedPartIndex); pushHistory(); }});
+    document.getElementById('btn-delete-part').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ if(confirm('Supprimer cette partie ?')){ deletePart(selectedPartIndex); pushHistory(); }}});
+
+    songTitleInput.addEventListener('input', ()=>{ state.title = songTitleInput.value; pushHistory(); });
+    tempoInput.addEventListener('change', ()=>{ state.tempo = parseInt(tempoInput.value,10) || 120; pushHistory(); });
+    commentsInput.addEventListener('input', ()=>{ state.comments = commentsInput.value; pushHistory(); });
+
+    document.getElementById('btn-save').addEventListener('click', saveJSON);
+    document.getElementById('btn-load').addEventListener('click', ()=> fileInput.click());
+    fileInput.addEventListener('change', handleFileLoad);
+
+    document.getElementById('btn-new').addEventListener('click', ()=>{
+      if(!confirm('Réinitialiser la page et supprimer le travail en cours ?')) return;
+      state = {title:'Titre du morceau', tempo:120, parts: [], comments:''};
+      pushHistory();
+      renderAll();
+    });
+
+    document.getElementById('btn-undo').addEventListener('click', ()=> {
+      if(historyIndex>0) restoreFromHistory(historyIndex-1);
+    });
+    document.getElementById('btn-redo').addEventListener('click', ()=> {
+      if(historyIndex < history.length-1) restoreFromHistory(historyIndex+1);
+    });
+
+    document.getElementById('btn-transpose-up').addEventListener('click', ()=>{ transposeAll(1); pushHistory();});
+    document.getElementById('btn-transpose-down').addEventListener('click', ()=>{ transposeAll(-1); pushHistory();});
+
+    document.getElementById('btn-export').addEventListener('click', ()=> {
+      // hide controls via print CSS and call print
+      window.print();
+    });
+
+    // grid interactions: delegated
+    pageGrid.addEventListener('click', (e)=>{
+      const cell = e.target.closest('.measure');
+      if(!cell) return;
+      const partIndex = parseInt(cell.dataset.partIndex,10);
+      const measureIndex = parseInt(cell.dataset.measureIndex,10);
+      openEditorFor(partIndex, measureIndex);
+    });
+
+    // Editor bindings
+    editorSplit.addEventListener('change', ()=> {
+      editorChord2Row.style.display = editorSplit.checked ? 'block' : 'none';
+    });
+    document.getElementById('editor-save').addEventListener('click', ()=> {
+      if(!editingCell) { closeEditor(); return; }
+      const p = state.parts[editingCell.partIndex];
+      const m = p.measures[editingCell.measureIndex];
+      m.split = editorSplit.checked;
+      m.chord1 = editorChord1.value.trim();
+      m.chord2 = editorChord2.value.trim();
+      m.oval = editorOval.checked;
+      // mark filled if any chord present
+      // (We treat filled as any chord1 or chord2 non-empty)
+      renderAll();
+      pushHistory();
+      closeEditor();
+    });
+    document.getElementById('editor-cancel').addEventListener('click', ()=> {
+      closeEditor();
+    });
+  }
+
+  function addPart(part){
     state.parts.push(part);
-    saveHistorySnapshot();
     renderAll();
-  };
+    pushHistory();
+  }
+  function duplicatePart(idx){
+    const src = state.parts[idx];
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.name = copy.name + ' (copy)';
+    state.parts.splice(idx+1,0,copy);
+    renderAll();
+  }
+  function movePartUp(idx){
+    if(idx<=0) return;
+    const a = state.parts.splice(idx,1)[0];
+    state.parts.splice(idx-1,0,a);
+    selectPart(idx-1);
+    renderAll();
+  }
+  function movePartDown(idx){
+    if(idx >= state.parts.length-1) return;
+    const a = state.parts.splice(idx,1)[0];
+    state.parts.splice(idx+1,0,a);
+    selectPart(idx+1);
+    renderAll();
+  }
+  function deletePart(idx){
+    state.parts.splice(idx,1);
+    selectedPartIndex = null;
+    renderAll();
+  }
 
-  songTitleInput.oninput = (e) => { state.title = e.target.value; };
-  songTitleInput.onblur = ()=> saveHistorySnapshot();
-
-  tempoInput.oninput = (e) => { state.tempo = parseInt(e.target.value) || 0; };
-  tempoInput.onchange = ()=> saveHistorySnapshot();
-
-  commentsInput.oninput = (e) => { state.comments = e.target.value; };
-  commentsInput.onblur = ()=> saveHistorySnapshot();
-
-  transposeUpBtn.onclick = ()=> { transposeAll(1); saveHistorySnapshot(); };
-  transposeDownBtn.onclick = ()=> { transposeAll(-1); saveHistorySnapshot(); };
-
-  saveBtn.onclick = saveJSON;
-  loadBtn.onclick = ()=> fileInput.click();
-  fileInput.onchange = handleFileLoad;
-
-  newBtn.onclick = ()=> {
-    if(!confirm("Nouvelle grille : tout le travail non sauvegardé sera perdu. Continuer ?")) return;
-    init();
-  };
-
-  exportBtn.onclick = ()=> { exportPrintable(); };
-
-  pastePartBtn.onclick = async ()=>{
-    try {
-      if(navigator.clipboard && navigator.clipboard.readText){
-        const text = await navigator.clipboard.readText();
-        tryPastePartText(text);
-        saveHistorySnapshot();
-      } else if(lastCopiedPartJson){
-        tryPastePartText(lastCopiedPartJson);
-        saveHistorySnapshot();
-      } else {
-        alert("Aucun contenu copié trouvé.");
-      }
-    } catch(err){
-      if(lastCopiedPartJson) { tryPastePartText(lastCopiedPartJson); saveHistorySnapshot(); }
-      else alert("Impossible de coller depuis le presse-papier : " + err.message);
+  function selectPart(idx){
+    selectedPartIndex = idx;
+    renderAll();
+    // fill settings panel
+    if(idx===null || idx===undefined){
+      selectedSettingsPanel.style.display = 'none';
+      return;
     }
-  };
+    selectedSettingsPanel.style.display = 'block';
+    const p = state.parts[idx];
+    partNameInput.value = p.name;
+    partTotalInput.value = p.totalMeasures || p.measures.length;
+    partPerLineInput.value = p.measuresPerLine || 4;
+  }
 
-  undoBtn.onclick = () => { undo(); };
-  redoBtn.onclick = () => { redo(); };
-}
+  function renderAll(){
+    // header
+    songTitleInput.value = state.title || '';
+    tempoInput.value = state.tempo || 120;
+    commentsInput.value = state.comments || '';
 
-/* ---------- Rendering ---------- */
-function renderAll(){
-  songTitleInput.value = state.title;
-  tempoInput.value = state.tempo;
-  commentsInput.value = state.comments || "";
-
-  renderPartsList();
-  renderGrid();
-  pastePartBtn.disabled = !(lastCopiedPartJson || (navigator.clipboard && navigator.clipboard.readText));
-  updateUndoRedoButtons();
-}
-
-function renderPartsList(){
-  partsListEl.innerHTML = "";
-  state.parts.forEach((p, idx) => {
-    const el = document.createElement("div");
-    el.className = "part-item";
-    el.draggable = true;
-    el.dataset.partId = p.id;
-
-    el.innerHTML = `
-      <div class="part-meta">
-        <input data-part-id="${p.id}" class="part-name" value="${escapeHtml(p.name)}" />
-        <div style="display:flex; gap:6px; font-size:12px;">
-          <label>Mesures total: <input type="number" data-measures="${p.id}" value="${p.measuresTotal}" min="1" style="width:60px" /></label>
-          <label>Par ligne: <input type="number" data-perline="${p.id}" value="${p.measuresPerLine}" min="1" max="10" style="width:60px" /></label>
+    // parts list (controls area)
+    partsContainer.innerHTML = '';
+    state.parts.forEach((p,idx)=>{
+      const div = document.createElement('div');
+      div.className = 'part-item' + (selectedPartIndex===idx ? ' selected':'');
+      div.dataset.index = idx;
+      div.innerHTML = `
+        <div style="flex:1; padding-right:6px;">${escapeHtml(p.name)}</div>
+        <div style="display:flex; gap:4px">
+          <button data-action="dup" title="Dupliquer">⧉</button>
+          <button data-action="up" title="Monter">↑</button>
+          <button data-action="down" title="Descendre">↓</button>
+          <button data-action="del" title="Supprimer">✕</button>
         </div>
-      </div>
-      <div class="part-actions">
-        <button data-dup="${p.id}">Dupliquer</button>
-        <button data-copy="${p.id}">Copier</button>
-        <button data-del="${p.id}">Supprimer</button>
-      </div>
-    `;
-
-    // events
-    const nameInput = el.querySelector(".part-name");
-    nameInput.oninput = (e)=>{
-      const id = e.target.dataset.partId;
-      const part = state.parts.find(x=>x.id===id);
-      if(part) { part.name = e.target.value; renderGrid(); }
-    };
-    nameInput.onblur = ()=> saveHistorySnapshot();
-
-    const totalInput = el.querySelector(`input[data-measures="${p.id}"]`);
-    const perlineInput = el.querySelector(`input[data-perline="${p.id}"]`);
-    totalInput.onchange = (e)=>{
-      const val = clamp(parseInt(e.target.value)||1, 1, 200);
-      const part = state.parts.find(x=>x.id===p.id);
-      if(part){
-        if(val > part.measuresTotal){
-          for(let i=0;i<val-part.measuresTotal;i++) part.measures.push({chord:"", split:false});
-        } else if(val < part.measuresTotal){
-          part.measures.splice(val);
-        }
-        part.measuresTotal = val;
-        saveHistorySnapshot();
-        renderAll();
-      }
-    };
-    perlineInput.onchange = (e)=>{
-      const val = clamp(parseInt(e.target.value)||1, 1, 10);
-      const part = state.parts.find(x=>x.id===p.id);
-      if(part){
-        part.measuresPerLine = val;
-        saveHistorySnapshot();
-        renderAll();
-      }
-    };
-
-    const dupBtn = el.querySelector(`[data-dup="${p.id}"]`);
-    dupBtn.onclick = ()=> {
-      const copy = JSON.parse(JSON.stringify(p));
-      copy.id = uid();
-      copy.name = p.name + " (copie)";
-      state.parts.splice(idx+1, 0, copy);
-      saveHistorySnapshot();
-      renderAll();
-    };
-
-    const copyBtn = el.querySelector(`[data-copy="${p.id}"]`);
-    copyBtn.onclick = async ()=> {
-      const part = state.parts.find(x=>x.id===p.id);
-      if(!part) return;
-      const text = JSON.stringify(part);
-      lastCopiedPartJson = text;
-      try {
-        if(navigator.clipboard && navigator.clipboard.writeText){
-          await navigator.clipboard.writeText(text);
-        }
-        alert("Partie copiée dans le presse-papier.");
-      } catch(err){
-        alert("Copie locale enregistrée (événement). Vous pouvez coller avec 'Coller partie'.");
-      }
-      pastePartBtn.disabled = false;
-    };
-
-    const delBtn = el.querySelector(`[data-del="${p.id}"]`);
-    delBtn.onclick = ()=> {
-      if(!confirm("Supprimer cette partie ?")) return;
-      state.parts.splice(idx,1);
-      saveHistorySnapshot();
-      renderAll();
-    };
-
-    // Drag & drop handlers
-    el.addEventListener("dragstart", (ev)=>{
-      ev.dataTransfer.setData("text/plain", p.id);
-      el.classList.add("dragging");
-    });
-    el.addEventListener("dragend", ()=> el.classList.remove("dragging"));
-    el.addEventListener("dragover", (ev)=> ev.preventDefault());
-    el.addEventListener("drop", (ev)=>{
-      ev.preventDefault();
-      const srcId = ev.dataTransfer.getData("text/plain");
-      if(!srcId) return;
-      const from = state.parts.findIndex(x=>x.id===srcId);
-      const to = state.parts.findIndex(x=>x.id===p.id);
-      if(from<0 || to<0) return;
-      const [item] = state.parts.splice(from,1);
-      state.parts.splice(to,0,item);
-      saveHistorySnapshot();
-      renderAll();
+      `;
+      partsContainer.appendChild(div);
     });
 
-    partsListEl.appendChild(el);
-  });
-}
+    // render page's left column and grid
+    pageLeft.innerHTML = '';
+    pageGrid.innerHTML = '';
 
-function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+    state.parts.forEach((p,idx) => {
+      const total = p.totalMeasures || p.measures.length;
+      // left part name area (one per part, height depends on grid height)
+      const partRowDiv = document.createElement('div');
+      partRowDiv.className = 'part-row';
 
-function renderGrid(){
-  gridContainer.innerHTML = "";
-  state.parts.forEach((p, partIdx)=>{
-    const wrapper = document.createElement("div");
-    wrapper.className = "part-render";
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'part-name';
+      nameDiv.textContent = p.name;
+      partRowDiv.appendChild(nameDiv);
 
-    const label = document.createElement("div");
-    label.className = "part-label";
-    label.textContent = p.name;
+      const gridWrapper = document.createElement('div');
+      gridWrapper.className = 'part-grid';
 
-    const block = document.createElement("div");
-    block.className = "measures-block";
+      const perLine = p.measuresPerLine || 4;
+      const rows = Math.ceil(total / perLine);
+      for(let r=0;r<rows;r++){
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'measure-row';
+        for(let c=0;c<perLine;c++){
+          const mIndex = r*perLine + c;
+          if(mIndex >= total) break;
+          const measureData = p.measures[mIndex] || {split:false,chord1:'',chord2:'',oval:false};
+          const m = document.createElement('div');
+          m.className = 'measure' + ((measureData.chord1 || measureData.chord2) ? ' filled':'');
+          if(measureData.split) m.classList.add('split');
+          m.dataset.partIndex = idx;
+          m.dataset.measureIndex = mIndex;
 
-    const perLine = clamp(p.measuresPerLine, 1, 10);
-    const total = p.measuresTotal;
-    for(let lineStart=0; lineStart<total; lineStart += perLine){
-      const line = document.createElement("div");
-      line.className = "measures-line";
-      const lineEnd = Math.min(lineStart + perLine, total);
-      for(let i=lineStart; i<lineEnd; i++){
-        const measureEl = createMeasureSVG(p, i, partIdx);
-        line.appendChild(measureEl);
+          // content rendering
+          if(measureData.split){
+            // use SVG diagonal
+            m.innerHTML = `
+              <svg class="split-svg" viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <polyline points="0,100 100,0" fill="none" stroke="#000" stroke-width="2"/>
+              </svg>
+              <div class="split-text top-left">${escapeHtml(measureData.chord1 || '')}</div>
+              <div class="split-text bottom-right">${escapeHtml(measureData.chord2 || '')}</div>
+            `;
+            // if oval requested, show oval for first or second when present: show on top-left if chord1 only; if both and oval true show both in small ovals
+            if(measureData.oval){
+              // replace texts with ovals
+              const tl = m.querySelector('.split-text.top-left');
+              const br = m.querySelector('.split-text.bottom-right');
+              if(tl) tl.innerHTML = `<span class="chord-oval">${escapeHtml(measureData.chord1 || '')}</span>`;
+              if(br) br.innerHTML = `<span class="chord-oval">${escapeHtml(measureData.chord2 || '')}</span>`;
+              // keep background grey behind shapes as per spec: we keep measure with transparent background; but requirement said oval inside a square with gray background — if oval is used we make background gray
+              m.style.background = getComputedStyle(document.documentElement).getPropertyValue('--gray');
+            }
+          } else {
+            // single chord display
+            if(measureData.oval && (measureData.chord1 || measureData.chord2)){
+              // show an oval with the chord text (prefer chord1)
+              const chord = measureData.chord1 || measureData.chord2 || '';
+              m.innerHTML = `<span class="chord-oval">${escapeHtml(chord)}</span>`;
+              // put background gray behind oval when empty? The spec: user must be able to place in a measure the letter in an oval inside a square with gray background. We'll set background gray if oval is used.
+              m.style.background = getComputedStyle(document.documentElement).getPropertyValue('--gray');
+              if(!chord) m.classList.remove('filled');
+              else m.classList.add('filled');
+            } else {
+              // ordinary text centered
+              m.textContent = measureData.chord1 || '';
+              if(measureData.chord1) {
+                m.classList.add('filled');
+                m.style.background = 'var(--filled-bg)';
+              } else {
+                m.classList.remove('filled');
+                m.style.background = 'var(--gray)';
+              }
+            }
+          }
+          rowDiv.appendChild(m);
+        }
+        gridWrapper.appendChild(rowDiv);
       }
-      block.appendChild(line);
-    }
 
-    wrapper.appendChild(label);
-    wrapper.appendChild(block);
-    gridContainer.appendChild(wrapper);
-  });
-}
+      partRowDiv.appendChild(gridWrapper);
+      pageGrid.appendChild(partRowDiv);
+    });
 
-/* ---------- Measure creation and controls ---------- */
-function createMeasureSVG(part, index, partIdx){
-  const m = part.measures[index];
-  const el = document.createElement("div");
-  el.className = "measure";
-  const bgClass = (m.chord && m.chord.trim() !== "") ? "bg-filled" : "bg-empty";
-  el.classList.add(bgClass);
-
-  // SVG
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox","0 0 100 100");
-  svg.setAttribute("preserveAspectRatio","none");
-
-  const rect = document.createElementNS(ns, "rect");
-  rect.setAttribute("x","0"); rect.setAttribute("y","0");
-  rect.setAttribute("width","100"); rect.setAttribute("height","100");
-  rect.setAttribute("fill", m.chord && m.chord.trim()!=="" ? "#ffffff" : "#CECECE");
-  rect.setAttribute("stroke","#000");
-  svg.appendChild(rect);
-
-  if(m.split){
-    const line = document.createElementNS(ns, "line");
-    line.setAttribute("x1","0"); line.setAttribute("y1","100");
-    line.setAttribute("x2","100"); line.setAttribute("y2","0");
-    line.setAttribute("stroke","#000");
-    line.setAttribute("stroke-width","1");
-    svg.appendChild(line);
-
-    if(m.chord && m.chord.includes("|")){
-      const parts = m.chord.split("|");
-      const top = parts[0].trim();
-      const bottom = parts[1].trim();
-
-      const topText = document.createElementNS(ns,"text");
-      topText.setAttribute("x","30");
-      topText.setAttribute("y","35");
-      topText.setAttribute("class","chord-text");
-      topText.textContent = top;
-      svg.appendChild(topText);
-
-      const botText = document.createElementNS(ns,"text");
-      botText.setAttribute("x","70");
-      botText.setAttribute("y","65");
-      botText.setAttribute("class","chord-text");
-      botText.textContent = bottom;
-      svg.appendChild(botText);
-    } else {
-      const t = document.createElementNS(ns,"text");
-      t.setAttribute("x","50"); t.setAttribute("y","50");
-      t.setAttribute("class","chord-text");
-      t.textContent = m.chord || "";
-      svg.appendChild(t);
-    }
-  } else {
-    if(m.chord && m.chord.trim() !== ""){
-      const text = document.createElementNS(ns,"text");
-      text.setAttribute("x","50"); text.setAttribute("y","50");
-      text.setAttribute("class","chord-text");
-      text.textContent = m.chord;
-      svg.appendChild(text);
-    }
+    updateUndoRedoButtons();
   }
 
-  el.appendChild(svg);
+  function openEditorFor(partIndex, measureIndex){
+    editingCell = {partIndex, measureIndex};
+    const m = state.parts[partIndex].measures[measureIndex];
+    editorSplit.checked = !!m.split;
+    editorChord1.value = m.chord1 || '';
+    editorChord2.value = m.chord2 || '';
+    editorOval.checked = !!m.oval;
+    editorChord2Row.style.display = editorSplit.checked ? 'block':'none';
+    editor.setAttribute('aria-hidden','false');
+  }
+  function closeEditor(){
+    editingCell = null;
+    editor.setAttribute('aria-hidden','true');
+  }
 
-  // interactions: right-click for context and double-click to edit
-  const overlay = document.createElement("div");
-  overlay.className = "measure-click-layer";
-  overlay.title = "Double-clic pour éditer / clique droit pour options";
-  overlay.oncontextmenu = (ev)=> { ev.preventDefault(); showMeasureContextMenu(ev, part, index); };
-  overlay.ondblclick = (ev)=> { ev.preventDefault(); openEditDialog(part, index); };
-  el.appendChild(overlay);
-
-  return el;
-}
-
-/* ---------- Measure editing / context ---------- */
-function showMeasureContextMenu(ev, part, index){
-  const menu = document.createElement("div");
-  menu.style.position = "fixed";
-  menu.style.left = ev.clientX + "px";
-  menu.style.top = ev.clientY + "px";
-  menu.style.background = "#fff";
-  menu.style.border = "1px solid #ccc";
-  menu.style.padding = "6px";
-  menu.style.zIndex = 9999;
-  menu.style.boxShadow = "0 2px 8px rgba(0,0,0,0.2)";
-
-  const toggle = document.createElement("button");
-  toggle.textContent = part.measures[index].split ? "Enlever split" : "Split 2 accords";
-  toggle.onclick = ()=>{
-    part.measures[index].split = !part.measures[index].split;
-    document.body.removeChild(menu);
-    saveHistorySnapshot();
+  function transposeAll(step){
+    state.parts.forEach(p=>{
+      p.measures.forEach(m=>{
+        if(m.chord1) m.chord1 = transposeChordString(m.chord1, step);
+        if(m.chord2) m.chord2 = transposeChordString(m.chord2, step);
+      });
+    });
     renderAll();
-  };
-
-  const edit = document.createElement("button");
-  edit.textContent = "Éditer accord(s)";
-  edit.onclick = ()=>{
-    document.body.removeChild(menu);
-    openEditDialog(part, index);
-  };
-
-  const clear = document.createElement("button");
-  clear.textContent = "Effacer";
-  clear.onclick = ()=>{
-    part.measures[index].chord = "";
-    part.measures[index].split = false;
-    document.body.removeChild(menu);
-    saveHistorySnapshot();
-    renderAll();
-  };
-
-  menu.appendChild(toggle);
-  menu.appendChild(edit);
-  menu.appendChild(clear);
-
-  document.body.appendChild(menu);
-  const cleanup = ()=> { if(document.body.contains(menu)) document.body.removeChild(menu); };
-  setTimeout(()=> window.addEventListener("click", cleanup, { once:true }), 0);
-}
-
-function openEditDialog(part, index){
-  const m = part.measures[index];
-  const current = m.chord || "";
-  let input = prompt("Saisir accord (pour split: 'Accord1|Accord2'). Ex: Abm7  ou  C|G", current);
-  if(input === null) return;
-  input = input.trim();
-  if(input.includes("|")){
-    const parts = input.split("|").map(s=>s.trim());
-    if(parts.some(p=>!validateChordOrEmpty(p))){
-      alert("Accord invalide. Racines acceptées: " + ROOTS.join(", "));
-      return;
-    }
-    m.chord = parts.join("|");
-    m.split = true;
-  } else {
-    if(!validateChordOrEmpty(input) && input !== ""){
-      alert("Accord invalide. Racines acceptées: " + ROOTS.join(", "));
-      return;
-    }
-    m.chord = input;
-    m.split = false;
   }
-  saveHistorySnapshot();
-  renderAll();
-}
 
-function validateChordOrEmpty(s){
-  if(!s || s.trim()==="") return true;
-  const parsed = parseChord(s);
-  return parsed !== null;
-}
+  function saveJSON(){
+    const filename = (state.title || 'song').replace(/\s+/g,'_') + '.json';
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
 
-/* ---------- Transpose functions ---------- */
-function transposeAll(delta){
-  for(const part of state.parts){
-    for(const m of part.measures){
-      if(!m.chord || m.chord.trim()==="") continue;
-      if(m.split && m.chord.includes("|")){
-        const parts = m.chord.split("|").map(x=>x.trim());
-        const tparts = parts.map(p => transposeChord(p, delta));
-        m.chord = tparts.join(" | ");
-      } else {
-        m.chord = transposeChord(m.chord, delta);
+  function handleFileLoad(e){
+    const f = e.target.files[0];
+    if(!f) return;
+    const fr = new FileReader();
+    fr.onload = (ev)=>{
+      try{
+        const obj = JSON.parse(ev.target.result);
+        if(typeof obj === 'object'){
+          // basic validation
+          state = obj;
+          pushHistory();
+          renderAll();
+        } else {
+          alert('Fichier JSON invalide');
+        }
+      }catch(err){
+        alert('Erreur lecture JSON: ' + err.message);
       }
-    }
-  }
-  renderAll();
-}
-
-/* ---------- Export printable PDF (new) ---------- */
-/* Build a minimal A4 HTML page that contains only title, BPM, each part name, measures and comments.
-   Chord text is rendered at 12pt. */
-function escapeHtmlAttr(s){ return (s||"").replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-function measureToSvgString(m){
-  const filled = m.chord && m.chord.trim() !== "";
-  const bg = filled ? '#ffffff' : '#CECECE';
-  if(m.split && m.chord && m.chord.includes("|")){
-    const parts = m.chord.split("|").map(s=>s.trim());
-    const top = escapeHtmlAttr(parts[0]||"");
-    const bottom = escapeHtmlAttr(parts[1]||"");
-    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
-      <rect x="0" y="0" width="100" height="100" fill="${bg}" stroke="#000"/>
-      <line x1="0" y1="100" x2="100" y2="0" stroke="#000" stroke-width="1"/>
-      <text x="30" y="35" class="chord-text">${top}</text>
-      <text x="70" y="65" class="chord-text">${bottom}</text>
-    </svg>`;
-  } else {
-    const chord = escapeHtmlAttr(m.chord || "");
-    return `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
-      <rect x="0" y="0" width="100" height="100" fill="${bg}" stroke="#000"/>
-      <text x="50" y="50" class="chord-text">${chord}</text>
-    </svg>`;
-  }
-}
-
-function exportPrintable(){
-  const title = escapeHtmlAttr(state.title || '');
-  const bpm = escapeHtmlAttr(String(state.tempo || ''));
-  const comments = escapeHtmlAttr(state.comments || '');
-
-  const css = `
-    @page { size: A4; margin: 8mm }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; color:#000; }
-    .page { width:21cm; min-height:29.7cm; box-sizing:border-box; padding:8mm; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; height:3cm; }
-    .title { font-size: 16pt; font-weight:700; border-bottom:1px solid #000; padding-bottom:4px; }
-    .bpm { font-size: 12pt; }
-    .content { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
-    .part { display:flex; gap:8px; align-items:flex-start; margin-bottom:3mm; }
-    .part-name { width:6cm; font-weight:700; display:flex; align-items:center; justify-content:center; }
-    .measures { display:flex; flex-direction:column; gap:4px; }
-    .measures-line { display:flex; gap:4px; }
-    .measure { width:1.5cm; height:1.5cm; box-sizing:border-box; }
-    svg { width:100%; height:100%; display:block; }
-    .chord-text { font-size:12pt; text-anchor:middle; dominant-baseline:middle; font-weight:700; }
-    .footer { margin-top:8px; font-size:12pt; min-height: calc(12pt * 1.2 * 4); white-space:pre-wrap; }
-  `;
-
-  // Build parts HTML (static)
-  let partsHtml = '';
-  for(const p of state.parts){
-    partsHtml += `<div class="part">`;
-    partsHtml += `<div class="part-name">${escapeHtmlAttr(p.name)}</div>`;
-    partsHtml += `<div class="measures">`;
-    const perLine = clamp(p.measuresPerLine || 1, 1, 10);
-    for(let i=0;i<p.measuresTotal;i+=perLine){
-      partsHtml += `<div class="measures-line">`;
-      for(let j=i;j<Math.min(i+perLine,p.measuresTotal);j++){
-        const m = p.measures[j] || { chord:'', split:false };
-        partsHtml += `<div class="measure">${measureToSvgString(m)}</div>`;
-      }
-      partsHtml += `</div>`;
-    }
-    partsHtml += `</div>`;
-    partsHtml += `</div>`;
+    };
+    fr.readAsText(f);
+    // reset input
+    fileInput.value = '';
   }
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${css}</style></head><body><div class="page">` +
-    `<div class="header"><div class="title">${title}</div><div class="bpm">${bpm} BPM</div></div>` +
-    `<div class="content">` + partsHtml + `</div>` +
-    `<div class="footer">${comments}</div>` +
-    `</div></body></html>`;
+  // helpers
+  function escapeHtml(s){
+    if(!s && s!==0) return '';
+    return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  }
 
-  const w = window.open('', '_blank');
-  if(!w) { alert('Impossible d\\'ouvrir la fenêtre d\\'impression. Vérifie que les popups sont autorisés.'); return; }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  setTimeout(()=>{ w.focus(); w.print(); }, 300);
-}
+  // initialize and listen for clicks outside
+  init();
 
-/* ---------- Save / Load JSON ---------- */
-function saveJSON(){
-  state.title = songTitleInput.value;
-  state.tempo = parseInt(tempoInput.value) || 0;
-  state.comments = commentsInput.value;
-
-  const data = JSON.stringify(state, null, 2);
-  const blob = new Blob([data], {type:"application/json"});
-  const filename = (state.title || "grille").replace(/[\/\\:]/g,"_") + ".json";
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function handleFileLoad(e){
-  const f = e.target.files[0];
-  if(!f) return;
-  const reader = new FileReader();
-  reader.onload = (evt)=>{
-    try{
-      const obj = JSON.parse(evt.target.result);
-      if(!obj.parts || !Array.isArray(obj.parts)){
-        alert("Fichier JSON invalide.");
-        return;
-      }
-      state = obj;
-      // reset history after loading
-      history.snapshots = [];
-      history.index = -1;
-      saveHistorySnapshot();
-      renderAll();
-    } catch(err){
-      alert("Impossible de lire le fichier: " + err.message);
-    }
+  // Expose for debug
+  window.ChordGridGen = {
+    getState: ()=> state,
+    setState: (s)=> { state = s; pushHistory(); renderAll(); }
   };
-  reader.readAsText(f);
-  e.target.value = "";
-}
-
-/* ---------- Paste Part helper ---------- */
-function tryPastePartText(text){
-  if(!text) { alert("Presse-papier vide"); return; }
-  try {
-    const obj = JSON.parse(text);
-    if(obj && obj.id && obj.measures && Array.isArray(obj.measures)){
-      const newPart = JSON.parse(JSON.stringify(obj));
-      newPart.id = uid();
-      newPart.name = (newPart.name || "Part") + " (collée)";
-      state.parts.push(newPart);
-      saveHistorySnapshot();
-      alert("Partie collée.");
-      renderAll();
-      return;
-    }
-    if(obj && obj.parts && Array.isArray(obj.parts)){
-      const clones = obj.parts.map(p => { const c = JSON.parse(JSON.stringify(p)); c.id = uid(); return c; });
-      state.parts.push(...clones);
-      saveHistorySnapshot();
-      alert("Parties collées depuis l'état complet.");
-      renderAll();
-      return;
-    }
-    alert("Le contenu du presse-papier n'est pas une partie valide.");
-  } catch(err){
-    alert("Contenu du presse-papier non JSON ou invalide.");
-  }
-}
-
-/* ---------- Start ---------- */
-init();
+})();

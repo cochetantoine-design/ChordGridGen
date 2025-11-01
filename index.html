@@ -3,59 +3,112 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ChordGridGen</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>ChordGridGen — Générateur de grilles d'accords</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="app">
-    <div id="controls" class="controls">
-      <button id="newBtn">New</button>
-      <input id="fileInput" type="file" accept=".json" style="display:none" />
-      <button id="loadBtn">Load</button>
-      <button id="saveBtn">Save</button>
-      <button id="exportBtn">Export PDF</button>
+  <!-- Controls sidebar (NOT printed) -->
+  <aside id="controls">
+    <h2>Contrôles</h2>
 
-      <button id="transposeDownBtn">Transpose -</button>
-      <button id="transposeUpBtn">Transpose +</button>
-
-      <button id="undoBtn" disabled>Undo</button>
-      <button id="redoBtn" disabled>Redo</button>
-
-      <button id="pastePartBtn" disabled>Coller partie</button>
+    <div class="controls-row">
+      <button id="btn-new">New</button>
+      <button id="btn-load">Load</button>
+      <input id="file-input" type="file" accept=".json" style="display:none" />
+      <button id="btn-save">Save</button>
     </div>
 
-    <div id="page" class="page-a4">
-      <header class="page-header">
-        <div class="title-area">
-          <input id="songTitle" class="song-title" placeholder="Titre du morceau" />
-          <hr class="title-underline" />
+    <div class="controls-row">
+      <button id="btn-undo" title="Undo">Undo</button>
+      <button id="btn-redo" title="Redo">Redo</button>
+    </div>
+
+    <div class="controls-row">
+      <button id="btn-transpose-down">Transpose -</button>
+      <button id="btn-transpose-up">Transpose +</button>
+    </div>
+
+    <div class="controls-row">
+      <button id="btn-export">Export PDF</button>
+    </div>
+
+    <hr />
+
+    <h3>Parts</h3>
+    <div id="part-controls">
+      <button id="btn-add-part">Ajouter une partie</button>
+      <div id="parts-list" class="parts-list"></div>
+    </div>
+
+    <small class="muted">Sélectionnez une partie pour en modifier les paramètres.</small>
+
+    <div id="selected-part-settings" class="panel" style="display:none">
+      <h4>Paramètres partie</h4>
+      <label>Nom: <input id="part-name" type="text"></label>
+      <label>Total mesures: <input id="part-total" type="number" min="1" value="8"></label>
+      <label>Mesures / ligne (1-10): <input id="part-per-line" type="number" min="1" max="10" value="4"></label>
+      <div class="row">
+        <button id="btn-duplicate-part">Dupliquer</button>
+        <button id="btn-move-up">Monter</button>
+        <button id="btn-move-down">Descendre</button>
+        <button id="btn-delete-part">Supprimer</button>
+      </div>
+    </div>
+
+    <hr />
+    <p class="muted">Sélectionnez une case sur la grille pour éditer les accords. Vous pouvez cocher "Oval" pour placer le nom d'accord dans un ovale blanc (bord noir) conformément au cahier des charges.</p>
+  </aside>
+
+  <!-- Printable page -->
+  <main id="page-wrap">
+    <section id="page" class="a4page" role="document">
+      <header id="page-header">
+        <div id="title-area">
+          <input id="song-title" placeholder="Titre du morceau" />
+          <div class="underline"></div>
         </div>
-        <div class="tempo-area">
-          <label>BPM</label>
-          <input id="tempo" type="number" min="20" max="300" value="120" />
+        <div id="tempo-area">
+          <label for="tempo">Tempo (BPM)</label>
+          <input id="tempo" type="number" min="1" value="120" />
         </div>
       </header>
 
-      <main class="page-body">
-        <aside class="left-column">
-          <div class="parts-controls">
-            <button id="addPartBtn">Ajouter partie</button>
-          </div>
-          <div id="partsList" class="parts-list" aria-label="Liste des parties">
-            <!-- Parties ajoutées dynamiquement -->
-          </div>
-        </aside>
+      <section id="page-body">
+        <div id="page-left-column" class="left-column">
+          <!-- Partie names rendered here (6cm wide inside page) -->
+        </div>
+        <div id="page-grid" class="grid-column">
+          <!-- Grids rendered here -->
+        </div>
+      </section>
 
-        <section class="grid-area">
-          <div id="gridContainer" class="grid-container">
-            <!-- Grilles par partie rendues ici -->
-          </div>
-        </section>
-      </main>
-
-      <footer class="page-footer">
-        <textarea id="comments" placeholder="Commentaires (4 lignes)" rows="4"></textarea>
+      <footer id="page-footer">
+        <textarea id="comments" rows="4" placeholder="Commentaires..."></textarea>
       </footer>
+    </section>
+  </main>
+
+  <!-- Measure editor modal (simple) -->
+  <div id="editor" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <h3>Éditer mesure</h3>
+      <div>
+        <label>Split (2 accords) <input type="checkbox" id="editor-split"></label>
+      </div>
+      <div class="row">
+        <label>Accord 1: <input id="editor-chord1" type="text" maxlength="10" placeholder="Ex: Abm7"></label>
+      </div>
+      <div class="row" id="editor-chord2-row" style="display:none">
+        <label>Accord 2: <input id="editor-chord2" type="text" maxlength="10" placeholder="Ex: D7"></label>
+      </div>
+      <div class="row">
+        <label>Afficher dans ovale: <input id="editor-oval" type="checkbox" /></label>
+      </div>
+
+      <div class="row actions">
+        <button id="editor-save">OK</button>
+        <button id="editor-cancel">Annuler</button>
+      </div>
     </div>
   </div>
 
