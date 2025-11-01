@@ -1,13 +1,4 @@
-// ChordGridGen — basic implementation
-// Author: Copilot-style implementation for initial repo
-// Behaviour implemented:
-// - create parts (name, total measures, measuresPerLine)
-// - duplicate, reorder, delete parts
-// - edit measures (single or split), option oval
-// - transpose up/down over scale A Bb B C C# D Eb E F F# G Ab
-// - save/load JSON, new (reset), export via print
-// - undo/redo snapshots
-
+// ChordGridGen — updated for left-column part names alignment
 (() => {
   // State
   let state = {
@@ -21,7 +12,6 @@
   const history = [];
   let historyIndex = -1;
   function pushHistory() {
-    // drop future
     history.splice(historyIndex + 1);
     history.push(JSON.parse(JSON.stringify(state)));
     historyIndex = history.length - 1;
@@ -35,31 +25,28 @@
     updateUndoRedoButtons();
   }
   function updateUndoRedoButtons() {
-    document.getElementById('btn-undo').disabled = historyIndex <= 0;
-    document.getElementById('btn-redo').disabled = historyIndex >= history.length - 1;
+    const undoBtn = document.getElementById('btn-undo');
+    const redoBtn = document.getElementById('btn-redo');
+    if (undoBtn) undoBtn.disabled = historyIndex <= 0;
+    if (redoBtn) redoBtn.disabled = historyIndex >= history.length - 1;
   }
 
   // Scale for transposition
   const SCALE = ['A','Bb','B','C','C#','D','Eb','E','F','F#','G','Ab'];
   function normalizeRoot(r){
     if(!r) return '';
-    // Standardize alternates: use Bb instead of A# etc. We'll accept only the provided names.
     const map = {'A#':'Bb','Db':'C#','D#':'Eb','Gb':'F#','G#':'Ab','Cb':'B','E#':'F'};
     return map[r] || r;
   }
   function transposeChordString(s, step){
-    // s can be like "Abm7" or "F#sus4" or empty string
     if(!s || !s.trim()) return s;
     s = s.trim();
-    // match root at beginning
     const rootRegex = /^(A#|Bb|A|B|C#|Db|C|D#|Eb|D|E#|E|F#|Gb|F|G#|Ab|G|Cb)?/i;
     const m = s.match(rootRegex);
     if(!m) return s;
     let root = m[0];
-    if(!root) return s; // no root found
-    // Standardize some enharmonics
+    if(!root) return s;
     root = normalizeRoot(root.charAt(0).toUpperCase() + root.slice(1));
-    // suffix is rest
     const suffix = s.slice(m[0].length);
     const idx = SCALE.findIndex(x => x.toLowerCase() === root.toLowerCase());
     if(idx === -1) return s;
@@ -68,17 +55,11 @@
   }
 
   // DOM refs
-  const partsListEl = document.getElementById('parts-list');
+  const partsContainer = document.getElementById('parts-list');
   const partNameInput = document.getElementById('part-name');
   const partTotalInput = document.getElementById('part-total');
   const partPerLineInput = document.getElementById('part-per-line');
   const selectedSettingsPanel = document.getElementById('selected-part-settings');
-  const btnAddPart = document.getElementById('btn-add-part');
-  const btnDuplicate = document.getElementById('btn-duplicate-part');
-  const btnMoveUp = document.getElementById('btn-move-up');
-  const btnMoveDown = document.getElementById('btn-move-down');
-  const btnDeletePart = document.getElementById('btn-delete-part');
-  const partsContainer = document.getElementById('parts-list');
 
   const pageLeft = document.getElementById('page-left-column');
   const pageGrid = document.getElementById('page-grid');
@@ -100,10 +81,8 @@
   const editorChord2 = document.getElementById('editor-chord2');
   const editorOval = document.getElementById('editor-oval');
 
-  // init
   function init() {
     bindUI();
-    // start with one default part
     state = {
       title: 'Titre du morceau',
       tempo: 120,
@@ -128,7 +107,8 @@
   }
 
   function bindUI(){
-    btnAddPart.addEventListener('click', () => {
+    const btnAddPart = document.getElementById('btn-add-part');
+    if(btnAddPart) btnAddPart.addEventListener('click', () => {
       const name = prompt('Nom de la nouvelle partie', 'New Part');
       if(!name) return;
       const total = parseInt(prompt('Total mesures', '8') || '8',10) || 8;
@@ -137,35 +117,35 @@
       pushHistory();
     });
 
-    partsContainer.addEventListener('click', (e)=>{
-      const id = e.target.closest('.part-item')?.dataset?.index;
-      if(id !== undefined) {
-        selectPart(parseInt(id,10));
-      }
-      // select via button actions
-      const btn = e.target.closest('button[data-action]');
-      if(btn){
-        const idx = parseInt(btn.closest('.part-item').dataset.index,10);
-        const action = btn.dataset.action;
-        if(action==='dup'){ duplicatePart(idx); pushHistory(); }
-        if(action==='up'){ movePartUp(idx); pushHistory(); }
-        if(action==='down'){ movePartDown(idx); pushHistory(); }
-        if(action==='del'){ deletePart(idx); pushHistory(); }
-      }
-    });
+    if(partsContainer){
+      partsContainer.addEventListener('click', (e)=>{
+        const id = e.target.closest('.part-item')?.dataset?.index;
+        if(id !== undefined) {
+          selectPart(parseInt(id,10));
+        }
+        const btn = e.target.closest('button[data-action]');
+        if(btn){
+          const idx = parseInt(btn.closest('.part-item').dataset.index,10);
+          const action = btn.dataset.action;
+          if(action==='dup'){ duplicatePart(idx); pushHistory(); }
+          if(action==='up'){ movePartUp(idx); pushHistory(); }
+          if(action==='down'){ movePartDown(idx); pushHistory(); }
+          if(action==='del'){ deletePart(idx); pushHistory(); }
+        }
+      });
+    }
 
-    partNameInput.addEventListener('input', ()=> {
+    if(partNameInput) partNameInput.addEventListener('input', ()=> {
       if(selectedPartIndex===null) return;
       state.parts[selectedPartIndex].name = partNameInput.value;
       renderAll();
       pushHistory();
     });
-    partTotalInput.addEventListener('change', ()=> {
+    if(partTotalInput) partTotalInput.addEventListener('change', ()=> {
       if(selectedPartIndex===null) return;
       let t = parseInt(partTotalInput.value,10);
       if(isNaN(t) || t<1) t=1;
       const p = state.parts[selectedPartIndex];
-      // adjust measures array
       if(t > p.measures.length){
         const add = makeMeasuresArray(t - p.measures.length);
         p.measures = p.measures.concat(add);
@@ -177,7 +157,7 @@
       renderAll();
       pushHistory();
     });
-    partPerLineInput.addEventListener('change', ()=> {
+    if(partPerLineInput) partPerLineInput.addEventListener('change', ()=> {
       if(selectedPartIndex===null) return;
       let v = parseInt(partPerLineInput.value,10);
       if(isNaN(v) || v<1) v=1;
@@ -188,55 +168,71 @@
       pushHistory();
     });
 
-    document.getElementById('btn-duplicate-part').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ duplicatePart(selectedPartIndex); pushHistory(); }});
-    document.getElementById('btn-move-up').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ movePartUp(selectedPartIndex); pushHistory(); }});
-    document.getElementById('btn-move-down').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ movePartDown(selectedPartIndex); pushHistory(); }});
-    document.getElementById('btn-delete-part').addEventListener('click', ()=>{ if(selectedPartIndex!==null){ if(confirm('Supprimer cette partie ?')){ deletePart(selectedPartIndex); pushHistory(); }}});
+    const btnDuplicate = document.getElementById('btn-duplicate-part');
+    const btnMoveUp = document.getElementById('btn-move-up');
+    const btnMoveDown = document.getElementById('btn-move-down');
+    const btnDeletePart = document.getElementById('btn-delete-part');
+    if(btnDuplicate) btnDuplicate.addEventListener('click', ()=>{ if(selectedPartIndex!==null){ duplicatePart(selectedPartIndex); pushHistory(); }});
+    if(btnMoveUp) btnMoveUp.addEventListener('click', ()=>{ if(selectedPartIndex!==null){ movePartUp(selectedPartIndex); pushHistory(); }});
+    if(btnMoveDown) btnMoveDown.addEventListener('click', ()=>{ if(selectedPartIndex!==null){ movePartDown(selectedPartIndex); pushHistory(); }});
+    if(btnDeletePart) btnDeletePart.addEventListener('click', ()=>{ if(selectedPartIndex!==null){ if(confirm('Supprimer cette partie ?')){ deletePart(selectedPartIndex); pushHistory(); }}});
 
-    songTitleInput.addEventListener('input', ()=>{ state.title = songTitleInput.value; pushHistory(); });
-    tempoInput.addEventListener('change', ()=>{ state.tempo = parseInt(tempoInput.value,10) || 120; pushHistory(); });
-    commentsInput.addEventListener('input', ()=>{ state.comments = commentsInput.value; pushHistory(); });
+    if(songTitleInput) songTitleInput.addEventListener('input', ()=>{ state.title = songTitleInput.value; pushHistory(); });
+    if(tempoInput) tempoInput.addEventListener('change', ()=>{ state.tempo = parseInt(tempoInput.value,10) || 120; pushHistory(); });
+    if(commentsInput) commentsInput.addEventListener('input', ()=>{ state.comments = commentsInput.value; pushHistory(); });
 
-    document.getElementById('btn-save').addEventListener('click', saveJSON);
-    document.getElementById('btn-load').addEventListener('click', ()=> fileInput.click());
-    fileInput.addEventListener('change', handleFileLoad);
+    const btnSave = document.getElementById('btn-save');
+    const btnLoad = document.getElementById('btn-load');
+    const btnNew = document.getElementById('btn-new');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+    const btnTransUp = document.getElementById('btn-transpose-up');
+    const btnTransDown = document.getElementById('btn-transpose-down');
+    const btnExport = document.getElementById('btn-export');
 
-    document.getElementById('btn-new').addEventListener('click', ()=>{
+    if(btnSave) btnSave.addEventListener('click', saveJSON);
+    if(btnLoad) btnLoad.addEventListener('click', ()=> fileInput.click());
+    if(fileInput) fileInput.addEventListener('change', handleFileLoad);
+    if(btnNew) btnNew.addEventListener('click', ()=>{
       if(!confirm('Réinitialiser la page et supprimer le travail en cours ?')) return;
       state = {title:'Titre du morceau', tempo:120, parts: [], comments:''};
       pushHistory();
       renderAll();
     });
+    if(btnUndo) btnUndo.addEventListener('click', ()=> { if(historyIndex>0) restoreFromHistory(historyIndex-1); });
+    if(btnRedo) btnRedo.addEventListener('click', ()=> { if(historyIndex < history.length-1) restoreFromHistory(historyIndex+1); });
+    if(btnTransUp) btnTransUp.addEventListener('click', ()=>{ transposeAll(1); pushHistory();});
+    if(btnTransDown) btnTransDown.addEventListener('click', ()=>{ transposeAll(-1); pushHistory();});
+    if(btnExport) btnExport.addEventListener('click', ()=> { window.print(); });
 
-    document.getElementById('btn-undo').addEventListener('click', ()=> {
-      if(historyIndex>0) restoreFromHistory(historyIndex-1);
-    });
-    document.getElementById('btn-redo').addEventListener('click', ()=> {
-      if(historyIndex < history.length-1) restoreFromHistory(historyIndex+1);
-    });
-
-    document.getElementById('btn-transpose-up').addEventListener('click', ()=>{ transposeAll(1); pushHistory();});
-    document.getElementById('btn-transpose-down').addEventListener('click', ()=>{ transposeAll(-1); pushHistory();});
-
-    document.getElementById('btn-export').addEventListener('click', ()=> {
-      // hide controls via print CSS and call print
-      window.print();
-    });
+    // clicking names in left column selects part
+    if(pageLeft){
+      pageLeft.addEventListener('click', (e) => {
+        const nameEl = e.target.closest('.part-name');
+        if(!nameEl) return;
+        const idx = parseInt(nameEl.dataset.index, 10);
+        if(!isNaN(idx)) selectPart(idx);
+      });
+    }
 
     // grid interactions: delegated
-    pageGrid.addEventListener('click', (e)=>{
-      const cell = e.target.closest('.measure');
-      if(!cell) return;
-      const partIndex = parseInt(cell.dataset.partIndex,10);
-      const measureIndex = parseInt(cell.dataset.measureIndex,10);
-      openEditorFor(partIndex, measureIndex);
-    });
+    if(pageGrid){
+      pageGrid.addEventListener('click', (e)=>{
+        const cell = e.target.closest('.measure');
+        if(!cell) return;
+        const partIndex = parseInt(cell.dataset.partIndex,10);
+        const measureIndex = parseInt(cell.dataset.measureIndex,10);
+        openEditorFor(partIndex, measureIndex);
+      });
+    }
 
     // Editor bindings
-    editorSplit.addEventListener('change', ()=> {
+    if(editorSplit) editorSplit.addEventListener('change', ()=> {
       editorChord2Row.style.display = editorSplit.checked ? 'block' : 'none';
     });
-    document.getElementById('editor-save').addEventListener('click', ()=> {
+    const editorSave = document.getElementById('editor-save');
+    const editorCancel = document.getElementById('editor-cancel');
+    if(editorSave) editorSave.addEventListener('click', ()=> {
       if(!editingCell) { closeEditor(); return; }
       const p = state.parts[editingCell.partIndex];
       const m = p.measures[editingCell.measureIndex];
@@ -244,15 +240,11 @@
       m.chord1 = editorChord1.value.trim();
       m.chord2 = editorChord2.value.trim();
       m.oval = editorOval.checked;
-      // mark filled if any chord present
-      // (We treat filled as any chord1 or chord2 non-empty)
       renderAll();
       pushHistory();
       closeEditor();
     });
-    document.getElementById('editor-cancel').addEventListener('click', ()=> {
-      closeEditor();
-    });
+    if(editorCancel) editorCancel.addEventListener('click', ()=> { closeEditor(); });
   }
 
   function addPart(part){
@@ -290,7 +282,6 @@
   function selectPart(idx){
     selectedPartIndex = idx;
     renderAll();
-    // fill settings panel
     if(idx===null || idx===undefined){
       selectedSettingsPanel.style.display = 'none';
       return;
@@ -304,43 +295,40 @@
 
   function renderAll(){
     // header
-    songTitleInput.value = state.title || '';
-    tempoInput.value = state.tempo || 120;
-    commentsInput.value = state.comments || '';
+    if(songTitleInput) songTitleInput.value = state.title || '';
+    if(tempoInput) tempoInput.value = state.tempo || 120;
+    if(commentsInput) commentsInput.value = state.comments || '';
 
     // parts list (controls area)
-    partsContainer.innerHTML = '';
-    state.parts.forEach((p,idx)=>{
-      const div = document.createElement('div');
-      div.className = 'part-item' + (selectedPartIndex===idx ? ' selected':'');
-      div.dataset.index = idx;
-      div.innerHTML = `
-        <div style="flex:1; padding-right:6px;">${escapeHtml(p.name)}</div>
-        <div style="display:flex; gap:4px">
-          <button data-action="dup" title="Dupliquer">⧉</button>
-          <button data-action="up" title="Monter">↑</button>
-          <button data-action="down" title="Descendre">↓</button>
-          <button data-action="del" title="Supprimer">✕</button>
-        </div>
-      `;
-      partsContainer.appendChild(div);
-    });
+    if(partsContainer){
+      partsContainer.innerHTML = '';
+      state.parts.forEach((p,idx)=>{
+        const div = document.createElement('div');
+        div.className = 'part-item' + (selectedPartIndex===idx ? ' selected':'');
+        div.dataset.index = idx;
+        div.innerHTML = `
+          <div style="flex:1; padding-right:6px;">${escapeHtml(p.name)}</div>
+          <div style="display:flex; gap:4px">
+            <button data-action="dup" title="Dupliquer">⧉</button>
+            <button data-action="up" title="Monter">↑</button>
+            <button data-action="down" title="Descendre">↓</button>
+            <button data-action="del" title="Supprimer">✕</button>
+          </div>
+        `;
+        partsContainer.appendChild(div);
+      });
+    }
 
-    // render page's left column and grid
+    // render page's left column (names only) and grid column (grids only)
+    if(!pageLeft || !pageGrid) return;
     pageLeft.innerHTML = '';
     pageGrid.innerHTML = '';
 
+    // for each part, create the grid and the name entry, then append both,
+    // then set the left name's min-height to match the grid height so the name aligns vertically.
     state.parts.forEach((p,idx) => {
       const total = p.totalMeasures || p.measures.length;
-      // left part name area (one per part, height depends on grid height)
-      const partRowDiv = document.createElement('div');
-      partRowDiv.className = 'part-row';
-
-      const nameDiv = document.createElement('div');
-      nameDiv.className = 'part-name';
-      nameDiv.textContent = p.name;
-      partRowDiv.appendChild(nameDiv);
-
+      // create grid for this part
       const gridWrapper = document.createElement('div');
       gridWrapper.className = 'part-grid';
 
@@ -359,9 +347,7 @@
           m.dataset.partIndex = idx;
           m.dataset.measureIndex = mIndex;
 
-          // content rendering
           if(measureData.split){
-            // use SVG diagonal
             m.innerHTML = `
               <svg class="split-svg" viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
                 <polyline points="0,100 100,0" fill="none" stroke="#000" stroke-width="2"/>
@@ -369,35 +355,20 @@
               <div class="split-text top-left">${escapeHtml(measureData.chord1 || '')}</div>
               <div class="split-text bottom-right">${escapeHtml(measureData.chord2 || '')}</div>
             `;
-            // if oval requested, show oval for first or second when present: show on top-left if chord1 only; if both and oval true show both in small ovals
             if(measureData.oval){
-              // replace texts with ovals
-              const tl = m.querySelector('.split-text.top-left');
-              const br = m.querySelector('.split-text.bottom-right');
-              if(tl) tl.innerHTML = `<span class="chord-oval">${escapeHtml(measureData.chord1 || '')}</span>`;
-              if(br) br.innerHTML = `<span class="chord-oval">${escapeHtml(measureData.chord2 || '')}</span>`;
-              // keep background grey behind shapes as per spec: we keep measure with transparent background; but requirement said oval inside a square with gray background — if oval is used we make background gray
-              m.style.background = getComputedStyle(document.documentElement).getPropertyValue('--gray');
+              // after DOM insertion this will be converted to oval spans in a second pass
             }
           } else {
-            // single chord display
             if(measureData.oval && (measureData.chord1 || measureData.chord2)){
-              // show an oval with the chord text (prefer chord1)
               const chord = measureData.chord1 || measureData.chord2 || '';
               m.innerHTML = `<span class="chord-oval">${escapeHtml(chord)}</span>`;
-              // put background gray behind oval when empty? The spec: user must be able to place in a measure the letter in an oval inside a square with gray background. We'll set background gray if oval is used.
-              m.style.background = getComputedStyle(document.documentElement).getPropertyValue('--gray');
-              if(!chord) m.classList.remove('filled');
-              else m.classList.add('filled');
+              if(!chord) m.classList.remove('filled'); else m.classList.add('filled');
             } else {
-              // ordinary text centered
               m.textContent = measureData.chord1 || '';
               if(measureData.chord1) {
                 m.classList.add('filled');
-                m.style.background = 'var(--filled-bg)';
               } else {
                 m.classList.remove('filled');
-                m.style.background = 'var(--gray)';
               }
             }
           }
@@ -406,8 +377,49 @@
         gridWrapper.appendChild(rowDiv);
       }
 
-      partRowDiv.appendChild(gridWrapper);
-      pageGrid.appendChild(partRowDiv);
+      // create name element in left column
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'part-name' + (selectedPartIndex===idx ? ' selected-part-left':'');
+      nameDiv.textContent = p.name;
+      nameDiv.dataset.index = idx;
+
+      // append both (name to left column and grid to right column)
+      pageLeft.appendChild(nameDiv);
+      pageGrid.appendChild(gridWrapper);
+
+      // ensure selected highlight on left name
+      if(selectedPartIndex === idx) nameDiv.classList.add('selected-part-left');
+
+      // Convert split and oval content inside created measure elements if needed
+      // (do it after appended so dimensions and computed styles apply)
+      // fill ovals for split measures
+      const measures = gridWrapper.querySelectorAll('.measure.split');
+      measures.forEach((mEl)=>{
+        const top = mEl.querySelector('.split-text.top-left');
+        const bottom = mEl.querySelector('.split-text.bottom-right');
+        // find corresponding measure data to decide oval/background
+        const pIndex = parseInt(mEl.dataset.partIndex,10);
+        const mIndex = parseInt(mEl.dataset.measureIndex,10);
+        const md = state.parts[pIndex]?.measures[mIndex];
+        if(md?.oval){
+          if(top) top.innerHTML = `<span class="chord-oval">${escapeHtml(md.chord1 || '')}</span>`;
+          if(bottom) bottom.innerHTML = `<span class="chord-oval">${escapeHtml(md.chord2 || '')}</span>`;
+        }
+      });
+
+      // After layout, set the left name min-height to match the grid height so vertical alignment is maintained.
+      // Use a small timeout to ensure layout is computed in all browsers.
+      setTimeout(() => {
+        try {
+          const h = gridWrapper.getBoundingClientRect().height;
+          if(h && h > 0) {
+            nameDiv.style.minHeight = Math.max(h, 24) + 'px';
+            // vertically center text if taller than one measure row
+            nameDiv.style.display = 'flex';
+            nameDiv.style.alignItems = 'center';
+          }
+        } catch(e){}
+      }, 0);
     });
 
     updateUndoRedoButtons();
@@ -459,7 +471,6 @@
       try{
         const obj = JSON.parse(ev.target.result);
         if(typeof obj === 'object'){
-          // basic validation
           state = obj;
           pushHistory();
           renderAll();
@@ -471,20 +482,16 @@
       }
     };
     fr.readAsText(f);
-    // reset input
     fileInput.value = '';
   }
 
-  // helpers
   function escapeHtml(s){
-    if(!s && s!==0) return '';
+    if(s === undefined || s === null) return '';
     return String(s).replace(/[&<>"']/g, (m)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   }
 
-  // initialize and listen for clicks outside
   init();
 
-  // Expose for debug
   window.ChordGridGen = {
     getState: ()=> state,
     setState: (s)=> { state = s; pushHistory(); renderAll(); }
