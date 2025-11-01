@@ -2,10 +2,11 @@
   --page-width:210mm;
   --page-height:297mm;
   --header-max-h:3cm;
-  --left-col-w:4cm;        /* colonne gauche = 4 cm */
-  --measure-size:1.5cm;
-  --gap-between-parts:3mm;
-  --right-margin:1.5cm;    /* marge droite = 1.5 cm */
+  --left-col-w:4cm;           /* colonne gauche = 4 cm */
+  --measure-w:1.5cm;          /* largeur mesure = 1.5 cm */
+  --measure-h:1.2cm;          /* hauteur mesure = 1.2 cm */
+  --gap-between-parts:2mm;    /* espace vertical entre parties = 2 mm */
+  --right-margin:1.5cm;       /* marge droite = 1.5 cm */
   --gray:#CECECE;
   --filled-bg:#ffffff;
   font-family: "Arial", sans-serif;
@@ -76,7 +77,7 @@ body{
   padding-right:4mm;
   display:flex;
   flex-direction:column;
-  gap:var(--gap-between-parts);
+  gap:var(--gap-between-parts); /* vertical spacing between names = spacing between parts */
   align-items:flex-start;
 }
 
@@ -87,7 +88,7 @@ body{
   padding-left:0;      /* ensures measures start at grid left edge */
   display:flex;
   flex-direction:column;
-  gap:var(--gap-between-parts);
+  gap:var(--gap-between-parts); /* vertical spacing between grids = spacing between parts */
 }
 
 /* part-name area (left column entries) */
@@ -114,21 +115,21 @@ body{
 .part-grid{
   display:flex;
   flex-direction:column;
-  gap:4px;
+  gap:0;                /* no vertical gap between rows inside a part (rows stack tightly) */
   align-items:flex-start; /* left aligned so first measure starts at left edge */
 }
 
 /* each measure-row */
 .measure-row{
   display:flex;
-  gap:4px;
+  gap:0;                /* no horizontal space BETWEEN measures (user requested) */
   align-items:flex-start;
 }
 
-/* measure (square) */
+/* measure (rectangle) */
 .measure{
-  width:var(--measure-size);
-  height:var(--measure-size);
+  width:var(--measure-w);
+  height:var(--measure-h);
   border:1px solid #000;
   background:var(--gray);
   position:relative;

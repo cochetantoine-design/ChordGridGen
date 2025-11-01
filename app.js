@@ -1,4 +1,4 @@
-// ChordGridGen — updated for left-column part names alignment
+// ChordGridGen — updated to respect measure dimensions and part spacing
 (() => {
   // State
   let state = {
@@ -324,10 +324,9 @@
     pageLeft.innerHTML = '';
     pageGrid.innerHTML = '';
 
-    // for each part, create the grid and the name entry, then append both,
-    // then set the left name's min-height to match the grid height so the name aligns vertically.
     state.parts.forEach((p,idx) => {
       const total = p.totalMeasures || p.measures.length;
+
       // create grid for this part
       const gridWrapper = document.createElement('div');
       gridWrapper.className = 'part-grid';
@@ -355,9 +354,6 @@
               <div class="split-text top-left">${escapeHtml(measureData.chord1 || '')}</div>
               <div class="split-text bottom-right">${escapeHtml(measureData.chord2 || '')}</div>
             `;
-            if(measureData.oval){
-              // after DOM insertion this will be converted to oval spans in a second pass
-            }
           } else {
             if(measureData.oval && (measureData.chord1 || measureData.chord2)){
               const chord = measureData.chord1 || measureData.chord2 || '';
@@ -383,38 +379,30 @@
       nameDiv.textContent = p.name;
       nameDiv.dataset.index = idx;
 
-      // append both (name to left column and grid to right column)
+      // append both
       pageLeft.appendChild(nameDiv);
       pageGrid.appendChild(gridWrapper);
 
-      // ensure selected highlight on left name
-      if(selectedPartIndex === idx) nameDiv.classList.add('selected-part-left');
-
       // Convert split and oval content inside created measure elements if needed
-      // (do it after appended so dimensions and computed styles apply)
-      // fill ovals for split measures
       const measures = gridWrapper.querySelectorAll('.measure.split');
       measures.forEach((mEl)=>{
-        const top = mEl.querySelector('.split-text.top-left');
-        const bottom = mEl.querySelector('.split-text.bottom-right');
-        // find corresponding measure data to decide oval/background
         const pIndex = parseInt(mEl.dataset.partIndex,10);
         const mIndex = parseInt(mEl.dataset.measureIndex,10);
         const md = state.parts[pIndex]?.measures[mIndex];
         if(md?.oval){
+          const top = mEl.querySelector('.split-text.top-left');
+          const bottom = mEl.querySelector('.split-text.bottom-right');
           if(top) top.innerHTML = `<span class="chord-oval">${escapeHtml(md.chord1 || '')}</span>`;
           if(bottom) bottom.innerHTML = `<span class="chord-oval">${escapeHtml(md.chord2 || '')}</span>`;
         }
       });
 
       // After layout, set the left name min-height to match the grid height so vertical alignment is maintained.
-      // Use a small timeout to ensure layout is computed in all browsers.
       setTimeout(() => {
         try {
           const h = gridWrapper.getBoundingClientRect().height;
           if(h && h > 0) {
-            nameDiv.style.minHeight = Math.max(h, 24) + 'px';
-            // vertically center text if taller than one measure row
+            nameDiv.style.minHeight = Math.max(h, 20) + 'px';
             nameDiv.style.display = 'flex';
             nameDiv.style.alignItems = 'center';
           }
