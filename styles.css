@@ -2,9 +2,10 @@
   --page-width:210mm;
   --page-height:297mm;
   --header-max-h:3cm;
-  --left-col-w:6cm;
+  --left-col-w:4cm;        /* -> 4 cm demandé */
   --measure-size:1.5cm;
   --gap-between-parts:3mm;
+  --right-margin:1.5cm;    /* -> marge droite 1.5 cm */
   --gray:#CECECE;
   --filled-bg:#ffffff;
   font-family: "Arial", sans-serif;
@@ -51,13 +52,17 @@ main#a4{
 
 #a4, #page-wrap{flex:1; display:flex; justify-content:center; align-items:flex-start; padding:20px}
 
-/* A4 page */
+/* A4 page
+   - keep top/left/bottom padding at 8mm for print-safe area
+   - enforce right margin of 1.5cm as requested
+*/
 .a4page{
   width:var(--page-width);
   height:var(--page-height);
   background:white;
   box-shadow:0 2px 8px rgba(0,0,0,0.2);
   padding:8mm;
+  padding-right: var(--right-margin); /* right margin 1.5cm */
   display:flex;
   flex-direction:column;
   gap:6mm;
@@ -94,15 +99,18 @@ main#a4{
 }
 #tempo{width:80px;}
 
-/* Body */
+/* Body
+   - remove horizontal gap between the left-name column and the grid
+     so the grid's first measure aligns exactly on the left edge of the right column
+*/
 #page-body{
   display:flex;
-  gap:8mm;
+  gap:0; /* important: no extra horizontal gap */
   flex:1 1 auto;
   align-items:flex-start;
 }
 
-/* left col inside page (6cm) */
+/* left col inside page (4cm) */
 .left-column{
   width:var(--left-col-w);
   border-right:1px solid #000;
@@ -112,16 +120,20 @@ main#a4{
   gap:6mm;
 }
 
-/* grid column */
+/* grid column: ensure its content starts at its left edge */
 .grid-column{
   flex:1 1 auto;
   min-width:0;
+  padding-left:0;      /* ensure measures start at grid left edge */
 }
 
-/* Part row (left label + grid) */
+/* Part row (left label + grid)
+   We'll place the part label as a fixed-width column so the grid (measures) starts
+   immediately after that column — this makes the measures align with the grid-column's left edge.
+*/
 .part-row{
   display:flex;
-  gap:6mm;
+  gap:0; /* no gap so grid aligns to the left edge after the label */
   align-items:flex-start;
   margin-bottom:var(--gap-between-parts);
 }
@@ -134,6 +146,7 @@ main#a4{
   align-items:center;
   padding-left:4mm;
   font-weight:bold;
+  box-sizing:border-box;
 }
 
 /* grid for measures */
@@ -141,12 +154,15 @@ main#a4{
   display:flex;
   flex-direction:column;
   gap:4px;
+  /* ensure grid content is left-aligned */
+  align-items:flex-start;
 }
 
 /* each measure-row */
 .measure-row{
   display:flex;
   gap:4px;
+  align-items:flex-start; /* make sure measures start from left */
 }
 
 /* measure (square) */
@@ -162,6 +178,7 @@ main#a4{
   justify-content:center;
   padding:2px;
   overflow:visible;
+  box-sizing:border-box;
 }
 
 /* filled */
@@ -250,6 +267,7 @@ main#a4{
     box-shadow:none;
     margin:0;
     padding:8mm;
+    padding-right: var(--right-margin); /* keep right margin in print */
     page-break-after:always;
   }
   /* ensure printed page size */
