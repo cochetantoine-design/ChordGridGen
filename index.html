@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ChordGridGen</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="controls" class="controls">
+      <button id="newBtn">New</button>
+      <input id="fileInput" type="file" accept=".json" style="display:none" />
+      <button id="loadBtn">Load</button>
+      <button id="saveBtn">Save</button>
+      <button id="exportBtn">Export PDF</button>
+
+      <button id="transposeDownBtn">Transpose -</button>
+      <button id="transposeUpBtn">Transpose +</button>
+
+      <button id="undoBtn" disabled>Undo</button>
+      <button id="redoBtn" disabled>Redo</button>
+
+      <button id="pastePartBtn" disabled>Coller partie</button>
+    </div>
+
+    <div id="page" class="page-a4">
+      <header class="page-header">
+        <div class="title-area">
+          <input id="songTitle" class="song-title" placeholder="Titre du morceau" />
+          <hr class="title-underline" />
+        </div>
+        <div class="tempo-area">
+          <label>BPM</label>
+          <input id="tempo" type="number" min="20" max="300" value="120" />
+        </div>
+      </header>
+
+      <main class="page-body">
+        <aside class="left-column">
+          <div class="parts-controls">
+            <button id="addPartBtn">Ajouter partie</button>
+          </div>
+          <div id="partsList" class="parts-list" aria-label="Liste des parties">
+            <!-- Parties ajoutées dynamiquement -->
+          </div>
+        </aside>
+
+        <section class="grid-area">
+          <div id="gridContainer" class="grid-container">
+            <!-- Grilles par partie rendues ici -->
+          </div>
+        </section>
+      </main>
+
+      <footer class="page-footer">
+        <textarea id="comments" placeholder="Commentaires (4 lignes)" rows="4"></textarea>
+      </footer>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
