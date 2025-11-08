@@ -3,114 +3,62 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ChordGridGen — Générateur de grilles d'accords</title>
+  <title>Éditer la mesure — Exemple</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Controls sidebar (NOT printed) -->
-  <aside id="controls">
-    <h2>Contrôles</h2>
+  <main>
+    <h1>Mesures (exemple)</h1>
 
-    <div class="controls-row">
-      <button id="btn-new">New</button>
-      <button id="btn-load">Load</button>
-      <input id="file-input" type="file" accept=".json" style="display:none" />
-      <button id="btn-save">Save</button>
-    </div>
-
-    <div class="controls-row">
-      <button id="btn-undo" title="Undo">Undo</button>
-      <button id="btn-redo" title="Redo">Redo</button>
-    </div>
-
-    <div class="controls-row">
-      <button id="btn-transpose-down">Transpose -</button>
-      <button id="btn-transpose-up">Transpose +</button>
-    </div>
-
-    <div class="controls-row">
-      <button id="btn-export">Export PDF</button>
-    </div>
-
-    <hr />
-
-    <h3>Parts</h3>
-    <div id="part-controls">
-      <button id="btn-add-part">Ajouter une partie</button>
-      <div id="parts-list" class="parts-list"></div>
-    </div>
-
-    <small class="muted">Sélectionnez une partie pour en modifier les paramètres.</small>
-
-    <div id="selected-part-settings" class="panel" style="display:none">
-      <h4>Paramètres partie</h4>
-      <label>Nom: <input id="part-name" type="text"></label>
-      <label>Total mesures: <input id="part-total" type="number" min="1" value="8"></label>
-      <label>Mesures / ligne (1-10): <input id="part-per-line" type="number" min="1" max="10" value="4"></label>
-      <div class="row">
-        <button id="btn-duplicate-part">Dupliquer</button>
-        <button id="btn-move-up">Monter</button>
-        <button id="btn-move-down">Descendre</button>
-        <button id="btn-delete-part">Supprimer</button>
+    <section id="measures">
+      <!-- Chaque .measure contient le JSON dans data-json (stringified) -->
+      <div class="measure" tabindex="0" data-json='{"id":1,"name":"Température","value":21.4,"unit":"°C"}'>
+        <div class="measure-head">
+          <strong>Mesure 1 — Température</strong>
+          <div class="actions">
+            <button class="edit-btn" aria-haspopup="true" aria-expanded="false">Éditer la mesure ▾</button>
+            <div class="edit-menu" role="menu" hidden>
+              <button class="menu-item copy" role="menuitem">Copier</button>
+              <button class="menu-item paste" role="menuitem">Coller</button>
+              <div class="clipboard-preview" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+        <pre class="measure-json" aria-label="Contenu JSON de la mesure"></pre>
       </div>
-    </div>
 
-    <hr />
-    <p class="muted">Sélectionnez une case sur la grille pour éditer les accords. Vous pouvez cocher "Oval" pour placer le nom d'accord dans un ovale blanc (bord noir) conformément au cahier des charges.</p>
-  </aside>
+      <div class="measure" tabindex="0" data-json='{"id":2,"name":"Pression","value":101.3,"unit":"kPa"}'>
+        <div class="measure-head">
+          <strong>Mesure 2 — Pression</strong>
+          <div class="actions">
+            <button class="edit-btn" aria-haspopup="true" aria-expanded="false">Éditer la mesure ▾</button>
+            <div class="edit-menu" role="menu" hidden>
+              <button class="menu-item copy" role="menuitem">Copier</button>
+              <button class="menu-item paste" role="menuitem">Coller</button>
+              <div class="clipboard-preview" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+        <pre class="measure-json" aria-label="Contenu JSON de la mesure"></pre>
+      </div>
 
-  <!-- Printable page -->
-  <main id="page-wrap">
-    <section id="page" class="a4page" role="document">
-      <header id="page-header">
-        <div id="title-area">
-          <input id="song-title" placeholder="Titre du morceau" />
-          <div class="underline"></div>
-        </div>
-        <div id="tempo-area">
-          <label for="tempo">Tempo (BPM)</label>
-          <input id="tempo" type="number" min="1" value="120" />
-        </div>
-      </header>
-
-      <section id="page-body">
-        <div id="page-left-column" class="left-column">
-          <!-- Partie names rendered here (6cm wide inside page) -->
-        </div>
-        <div id="page-grid" class="grid-column">
-          <!-- Grids rendered here -->
-        </div>
-      </section>
-
-      <footer id="page-footer">
-        <textarea id="comments" rows="4" placeholder="Commentaires..."></textarea>
-      </footer>
     </section>
-  </main>
 
-  <!-- Measure editor modal (simple) -->
-  <div id="editor" class="modal" aria-hidden="true">
-    <div class="modal-content">
-      <h3>Éditer mesure</h3>
-      <div>
-        <label>Split (2 accords) <input type="checkbox" id="editor-split"></label>
-      </div>
-      <div class="row">
-        <label>Accord 1: <input id="editor-chord1" type="text" maxlength="10" placeholder="Ex: Abm7"></label>
-      </div>
-      <div class="row" id="editor-chord2-row" style="display:none">
-        <label>Accord 2: <input id="editor-chord2" type="text" maxlength="10" placeholder="Ex: D7"></label>
-      </div>
-      <div class="row">
-        <label>Afficher dans ovale: <input id="editor-oval" type="checkbox" /></label>
-      </div>
+    <div id="toast" role="status" aria-live="polite" hidden></div>
 
-      <div class="row actions">
-        <button id="editor-save">OK</button>
-        <button id="editor-cancel">Annuler</button>
+    <!-- Modal de confirmation / aperçu avant collage -->
+    <div id="confirm-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="modal-content">
+        <h2 id="confirm-title">Aperçu du contenu à coller</h2>
+        <pre id="preview-json"></pre>
+        <div class="modal-actions">
+          <button id="confirm-accept">Coller et remplacer</button>
+          <button id="confirm-cancel">Annuler</button>
+        </div>
       </div>
     </div>
-  </div>
+
+  </main>
 
   <script src="app.js"></script>
 </body>
